@@ -1,0 +1,15 @@
+./README.md
+./.env.example
+./.env
+./requirements.txt
+./src/autocoder.py
+./src/config.py
+./src/file_manager.py
+./src/context_builder.py
+./src/task_interpreter.py
+./src/code_modifier.py
+./src/test_runner.py
+./src/error_handler.py
+./src/claude_api_wrapper.py
+./src/langgraph_workflow.py
+./setup.py
