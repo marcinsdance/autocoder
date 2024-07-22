@@ -51,11 +51,14 @@ echo "Press any key to continue when the GitHub release is created..."
 read -n 1 -s
 
 # Update Homebrew formula
+echo "Updating Homebrew formula..."
 cd "$HOMEBREW_REPO"
+echo "Changed directory to $HOMEBREW_REPO"
 git checkout master
+echo "Checked out master branch"
 
 # Download new release and calculate SHA
-TARBALL_URL="https://github.com/$GITHUB_USERNAME/autocoder/archive/refs/tags/$NEW_VERSION.tar.gz"
+TARBALL_URL="https://github.com/$GITHUB_USERNAME/autocoder/archive/refs/tags/v$NEW_VERSION.tar.gz"
 wget "$TARBALL_URL" -O "v$NEW_VERSION.tar.gz"
 NEW_SHA256=$(shasum -a 256 "v$NEW_VERSION.tar.gz" | cut -d' ' -f1)
 
