@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="autocoder",
-    version="0.0.2",
+    version="0.0.4",
     author="Marcin Dancewicz",
     author_email="mdancewicz@gmail.com",
     description="An automated coding system using Claude API and LangGraph",
