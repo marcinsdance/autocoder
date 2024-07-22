@@ -9,6 +9,7 @@ class ContextBuilder:
             context += f"File: {filename}\n"
             context += "Content:\n"
             context += content[:500] + "...\n\n" if len(content) > 500 else content + "\n\n"
+        self.context['built_context'] = context
         return context
 
     def get_full_context(self):
