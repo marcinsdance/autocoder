@@ -68,30 +68,6 @@ python src/autocoder.py "Add a new function to calculate the factorial of a numb
 
 The tool will interpret the task, make the necessary code changes, run tests, and provide you with the results.
 
-## Project Structure
-
-```
-claude_automated_coding/
-├── src/
-│   ├── autocoder.py
-│   ├── config.py
-│   ├── file_manager.py
-│   ├── context_builder.py
-│   ├── task_interpreter.py
-│   ├── code_modifier.py
-│   ├── test_runner.py
-│   ├── error_handler.py
-│   ├── claude_api_wrapper.py
-│   └── langgraph_workflow.py
-├── tests/
-│   └── (your test files)
-├── .env.example
-├── .gitignore
-├── requirements.txt
-├── setup.py
-└── README.md
-```
-
 ## Contributing
 
 Contributions to Claude Automated Coding are welcome. Please feel free to submit a Pull Request.

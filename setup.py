@@ -4,14 +4,14 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="claude_automated_coding",
-    version="0.1.0",
-    author="Your Name",
-    author_email="your.email@example.com",
+    name="autocoder",
+    version="0.0.2",
+    author="Marcin Dancewicz",
+    author_email="mdancewicz@gmail.com",
     description="An automated coding system using Claude API and LangGraph",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/claude_automated_coding",
+    url="https://github.com/marcinsdance/autocoder",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     classifiers=[
