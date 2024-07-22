@@ -18,7 +18,10 @@ class ContextBuilder:
         self.context[key] = value
 
     def get_context(self, key):
-        return self.context.get(key)
+        if key in self.context:
+            return self.context[key]
+        else:
+            raise KeyError(f"Key '{key}' not found in context")
 
     def update_context(self, key, value):
         if key in self.context:
