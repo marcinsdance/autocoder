@@ -55,14 +55,22 @@ cd "$HOMEBREW_REPO"
 git checkout master
 
 # Download new release and calculate SHA
-TARBALL_URL="https://github.com/$GITHUB_USERNAME/autocoder/archive/refs/tags/v$NEW_VERSION.tar.gz"
+TARBALL_URL="https://github.com/$GITHUB_USERNAME/autocoder/archive/refs/tags/$NEW_VERSION.tar.gz"
 wget "$TARBALL_URL" -O "v$NEW_VERSION.tar.gz"
 NEW_SHA256=$(shasum -a 256 "v$NEW_VERSION.tar.gz" | cut -d' ' -f1)
 
 # Update formula file
-sed -i '' "s/version \".*\"/version \"$NEW_VERSION\"/" Formula/autocoder.rb
-sed -i '' "s|url \".*\"|url \"$TARBALL_URL\"|" Formula/autocoder.rb
-sed -i '' "s/sha256 \".*\"/sha256 \"$NEW_SHA256\"/" Formula/autocoder.rb
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    sed -i '' "s/version \".*\"/version \"$NEW_VERSION\"/" Formula/autocoder.rb
+    sed -i '' "s|url \".*\"|url \"$TARBALL_URL\"|" Formula/autocoder.rb
+    sed -i '' "s/sha256 \".*\"/sha256 \"$NEW_SHA256\"/" Formula/autocoder.rb
+else
+    # Linux and others
+    sed -i "s/version \".*\"/version \"$NEW_VERSION\"/" Formula/autocoder.rb
+    sed -i "s|url \".*\"|url \"$TARBALL_URL\"|" Formula/autocoder.rb
+    sed -i "s/sha256 \".*\"/sha256 \"$NEW_SHA256\"/" Formula/autocoder.rb
+fi
 
 # Commit and push changes
 git add Formula/autocoder.rb
