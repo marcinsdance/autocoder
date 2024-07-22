@@ -34,7 +34,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "claude-automated-coding=main:main",
+            "autocoder=autocoder.autocoder:main",
         ],
     },
 )
