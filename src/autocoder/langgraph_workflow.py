@@ -25,12 +25,14 @@ class LangGraphWorkflow:
 
             # Generate prompt for Claude
             task_prompt = self.task_interpreter.get_prompt_for_task(interpreted_task)
-            full_prompt = f"Context:\n{context}\n\nTask:\n{task_prompt}"
-            logger.info("Prompt generated for Claude API")
+            full_prompt = f"Context:\n{context}\n\nTask:\n{task_prompt}\n\nPlease provide the necessary code changes or additions to complete this task."
 
             # Get response from Claude
             modifications = self.claude_api.generate_response(full_prompt)
             logger.info("Received response from Claude API")
+
+            if modifications is None:
+                return "Error: Failed to generate response from Claude API"
 
             # Apply modifications
             for file in interpreted_task['affected_files']:
