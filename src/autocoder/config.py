@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+
 class Config:
     def __init__(self):
         # Load .env file from the user's home directory
@@ -20,13 +21,14 @@ class Config:
                 "Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .autocoder.env file in your home directory")
 
     def _determine_project_directory(self):
-        # First, check if PROJECT_DIRECTORY is set in .env
-        env_project_dir = os.getenv('PROJECT_DIRECTORY')
-        if env_project_dir:
-            return env_project_dir
+        # First, use the current working directory
+        cwd = os.getcwd()
 
-        # If not set in .env, use the current working directory
-        return os.getcwd()
+        # Then, check if PROJECT_DIRECTORY is set in .env
+        env_project_dir = os.getenv('PROJECT_DIRECTORY')
+
+        # Prioritize current working directory, fall back to env variable if set
+        return cwd if cwd != "/" else (env_project_dir or cwd)
 
     def _get_api_key(self):
         # Prefer ANTHROPIC_API_KEY, but fall back to CLAUDE_API_KEY if necessary

@@ -24,9 +24,9 @@ def run_automated_coding(task_description):
     context_builder = ContextBuilder()
     task_interpreter = TaskInterpreter()
     code_modifier = CodeModifier()
-    test_runner = TestRunner()
+    test_runner = TestRunner(project_dir)  # Pass project_dir here
     error_handler = ErrorHandler()
-    claude_api = ClaudeAPIWrapper(config.get_api_key())  # Updated to use get_api_key()
+    claude_api = ClaudeAPIWrapper(config.get_api_key())
 
     # Initialize LangGraph workflow
     workflow = LangGraphWorkflow(
