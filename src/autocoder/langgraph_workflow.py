@@ -2,7 +2,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 class LangGraphWorkflow:
     def __init__(self, file_manager, context_builder, task_interpreter,
                  code_modifier, test_runner, error_handler, claude_api):
@@ -21,9 +20,7 @@ class LangGraphWorkflow:
             logger.info(f"Task interpreted: {interpreted_task['task_type']}")
 
             # Build context
-            files = self.file_manager.list_files()
-            file_contents = {f: self.file_manager.read_file(f) for f in files}
-            context = self.context_builder.build_context(file_contents)
+            context = self.context_builder.build_context(self.file_manager)
             logger.info("Context built successfully")
 
             # Generate prompt for Claude
@@ -37,8 +34,8 @@ class LangGraphWorkflow:
 
             # Apply modifications
             for file in interpreted_task['affected_files']:
-                if file in file_contents:
-                    original_code = file_contents[file]
+                if self.file_manager.file_exists(file):
+                    original_code = self.file_manager.read_file(file)
                     modified_code = self.code_modifier.modify_code(original_code, modifications)
                     self.file_manager.write_file(file, modified_code)
                     logger.info(f"Modified file: {file}")

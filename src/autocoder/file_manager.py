@@ -30,3 +30,7 @@ class FileManager:
    def get_file_contents(self):
        files = self.list_files()
        return {file: self.read_file(file) for file in files if self.read_file(file) is not None}
+
+   def file_exists(self, file_path):
+       full_path = os.path.join(self.project_directory, file_path)
+       return os.path.exists(full_path)
