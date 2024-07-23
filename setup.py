@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="autocoder",
-    version="0.0.4",
+    version="0.0.5",  # Updated to match version.txt
     author="Marcin Dancewicz",
     author_email="mdancewicz@gmail.com",
     description="An automated coding system using Claude API and LangGraph",
@@ -34,7 +34,8 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "autocoder=autocoder.autocoder:main",
+            "autocoder=src.autocoder.autocoder:main",
         ],
     },
+    scripts=['bin/autocoder'],  # Add this line to include the bin/autocoder script
 )
