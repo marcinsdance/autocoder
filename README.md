@@ -25,47 +25,31 @@ Before you begin, ensure you have met the following requirements:
    cd claude_automated_coding
    ```
 
-2. Create and activate a virtual environment:
+2. Install the package:
    ```
-   python -m venv .venv
-   ```
-   
-   On Windows, activate the virtual environment with:
-   ```
-   .venv\Scripts\activate
+   pip install .
    ```
    
-   On macOS and Linux, use:
+   If you want to install it for development:
    ```
-   source .venv/bin/activate
-   ```
-
-3. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
+   pip install -e .
    ```
 
-4. Set up your environment variables:
-   - Copy the `.env.example` file to `.env`
-   - Open the `.env` file and add your Anthropic API key:
+3. Verify the installation:
+   ```
+   which autocoder
+   ```
+
+4. You can now use the `autocoder` command from any location.
      ```
-     ANTHROPIC_API_KEY=your_api_key_here
+     autocoder "Your task description here"
      ```
 
-## Usage
-
-To use Claude Automated Coding, ensure your virtual environment is activated, then run the following command:
-
+Note: If you're using a virtual environment, make sure to activate it before installation and usage.
+For system-wide installation (requires root privileges):
 ```
-python src/autocoder.py "Your task description here"
+sudo pip install .
 ```
-
-For example:
-
-```
-python src/autocoder.py "Add a new function to calculate the factorial of a number in the math_utils.py file"
-```
-
 The tool will interpret the task, make the necessary code changes, run tests, and provide you with the results.
 
 ## Contributing

@@ -1,11 +1,16 @@
 from setuptools import setup, find_packages
+import os
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
+# Read the contents of the bin/autocoder file
+with open(os.path.join("bin", "autocoder"), "r") as f:
+    autocoder_script = f.read()
+
 setup(
     name="autocoder",
-    version="0.0.5",  # Updated to match version.txt
+    version="0.0.5",
     author="Marcin Dancewicz",
     author_email="mdancewicz@gmail.com",
     description="An automated coding system using Claude API and LangGraph",
@@ -34,8 +39,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "autocoder=src.autocoder.autocoder:main",
+            f"autocoder={autocoder_script}",
         ],
     },
-    scripts=['bin/autocoder'],  # Add this line to include the bin/autocoder script
 )
