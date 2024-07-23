@@ -1,6 +1,9 @@
 import os
 import glob
 import fnmatch
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ManifestProcessor:
     def __init__(self, project_root):
@@ -23,8 +26,8 @@ class ManifestProcessor:
     def process_manifest(self, manifest_file='MANIFEST.in'):
         manifest_path = os.path.join(self.project_root, manifest_file)
         if not os.path.exists(manifest_path):
-            print(f"Error: {manifest_file} not found in the project root directory.")
-            return []
+            logger.warning(f"{manifest_file} not found in the project root directory. Falling back to default file list.")
+            return self.get_default_file_list()
 
         included_files = set()
         excluded_files = set()
@@ -48,7 +51,16 @@ class ManifestProcessor:
                     self._handle_global_exclude(patterns, excluded_files)
 
         final_files = sorted(included_files - excluded_files)
-        return final_files
+        return final_files if final_files else self.get_default_file_list()
+
+    def get_default_file_list(self):
+        default_files = []
+        for root, _, files in os.walk(self.project_root):
+            if not self.is_excluded(root):
+                for file in files:
+                    if not self.is_excluded(file):
+                        default_files.append(os.path.join(root, file))
+        return sorted(default_files)
 
     def _handle_include(self, command, patterns, included_files):
         for pattern in patterns:
