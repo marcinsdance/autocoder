@@ -1,47 +1,7 @@
 #!/usr/bin/env python3
 
-import os
 import sys
-import subprocess
-from pathlib import Path
-
-def find_autocoder_path():
-    # Homebrew typically installs to /usr/local/Cellar for Intel Macs
-    # and /opt/homebrew/Cellar for Apple Silicon Macs
-    possible_paths = [
-        Path("/usr/local/Cellar/autocoder"),
-        Path("/opt/homebrew/Cellar/autocoder"),
-    ]
-    
-    for path in possible_paths:
-        if path.exists():
-            # Get the latest version
-            versions = [x for x in path.iterdir() if x.is_dir()]
-            if versions:
-                return max(versions)
-    
-    return None
-
-def main():
-    autocoder_path = find_autocoder_path()
-    if not autocoder_path:
-        print("Error: Could not find the Autocoder installation.", file=sys.stderr)
-        sys.exit(1)
-
-    # Set up the environment
-    env = os.environ.copy()
-    env['PYTHONPATH'] = str(autocoder_path)
-    env['PROJECT_DIRECTORY'] = os.getcwd()
-
-    # Construct the command to run the autocoder module
-    cmd = [sys.executable, "-m", "src.autocoder"] + sys.argv[1:]
-
-    # Run the command
-    try:
-        subprocess.run(cmd, env=env, check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Error running Autocoder: {e}", file=sys.stderr)
-        sys.exit(e.returncode)
+from autocoder.autocoder import main
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -34,7 +34,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "autocoder=src.autocoder.autocoder:main",
+            "autocoder=autocoder.autocoder:main",
         ],
     },
     scripts=['bin/autocoder'],
