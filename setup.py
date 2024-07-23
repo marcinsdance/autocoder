@@ -1,12 +1,7 @@
 from setuptools import setup, find_packages
-import os
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
-
-# Read the contents of the bin/autocoder file
-with open(os.path.join("bin", "autocoder"), "r") as f:
-    autocoder_script = f.read()
 
 setup(
     name="autocoder",
@@ -39,7 +34,8 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            f"autocoder={autocoder_script}",
+            "autocoder=src.autocoder.autocoder:main",
         ],
     },
+    scripts=['bin/autocoder'],
 )
