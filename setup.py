@@ -31,6 +31,7 @@ setup(
         "openai",
         "anthropic",
         "langgraph",
+        "astor",  # Added astor to the list of required packages
     ],
     entry_points={
         "console_scripts": [
