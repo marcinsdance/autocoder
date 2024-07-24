@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autocoder"
+dynamic = ["version"]
+authors = [
+    {name = "Marcin Dancewicz", email = "mdancewicz@gmail.com"},
+]
+description = "An automated coding system using Claude API and LangGraph"
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+]
+dependencies = [
+    "python-dotenv",
+    "requests",
+    "openai",
+    "anthropic",
+    "langgraph",
+    "astor",
+    "pytest",
+]
+
+[project.scripts]
+autocoder = "autocoder.autocoder:main"
+
+[tool.setuptools_scm]
+write_to = "src/autocoder/_version.py"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["autocoder*"]

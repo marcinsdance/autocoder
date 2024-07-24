@@ -5,3 +5,5 @@ anthropic==0.31.2
 langgraph==0.1.9
 pytest==8.2.2
 astor==0.8.1
+wheel==0.43.0
+setuptools_scm==8.0.4
