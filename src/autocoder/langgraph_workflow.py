@@ -1,4 +1,5 @@
 import logging
+from .tools.project_analyzer import ProjectAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -58,22 +59,26 @@ class LangGraphWorkflow:
             return error_report
 
     def analyze_project(self):
-        logger.info("Starting project analysis...")
-        project_analysis = self.project_analyzer.analyze_project()
-        if project_analysis:
-            logger.info("Project analysis complete.")
-            logger.info(f"Root directory: {project_analysis['root_directory']}")
-            logger.info("Project structure:")
-            self._print_structure(project_analysis['project_structure'])
-            logger.info("\nFile list:")
-            for file in project_analysis['file_list']:
-                logger.info(file)
-            logger.info("\nFile contents:")
-            for file, content in project_analysis['file_contents'].items():
-                logger.info(f"\n#File {file}:")
-                logger.info(content[:500] + "..." if len(content) > 500 else content)
-        else:
-            logger.error("Project analysis failed.")
+        logger.debug("LangGraphWorkflow: Starting project analysis...")
+        try:
+            project_analysis = self.project_analyzer.analyze_project()
+            if project_analysis:
+                logger.info("Project analysis complete.")
+                logger.info(f"Root directory: {project_analysis['root_directory']}")
+                logger.info("Project structure:")
+                self._print_structure(project_analysis['project_structure'])
+                logger.info("\nFile list:")
+                for file in project_analysis['file_list']:
+                    logger.info(file)
+                logger.info("\nFile contents:")
+                for file, content in project_analysis['file_contents'].items():
+                    logger.info(f"\n#File {file}:")
+                    logger.info(content[:500] + "..." if len(content) > 500 else content)
+            else:
+                logger.error("Project analysis failed.")
+        except Exception as e:
+            logger.error(f"An error occurred during project analysis: {str(e)}")
+            logger.exception("Exception details:")
 
     def _print_structure(self, structure, indent=""):
         for key, value in structure.items():

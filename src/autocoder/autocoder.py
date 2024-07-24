@@ -42,8 +42,10 @@ def run_automated_coding(task_description):
 
 
 def analyze_project():
+    logger.debug("Starting project analysis...")
     config = Config()
     project_dir = Path.cwd()
+    logger.debug(f"Project directory: {project_dir}")
     file_manager = FileManager(project_dir)
 
     # Initialize other components
@@ -58,7 +60,9 @@ def analyze_project():
         file_manager, context_builder, task_interpreter,
         code_modifier, test_runner, error_handler, claude_api
     )
+    logger.debug("Calling workflow.analyze_project()...")
     workflow.analyze_project()
+    logger.debug("Project analysis completed.")
 
 
 def main():
@@ -74,12 +78,18 @@ def main():
 
     args = parser.parse_args()
 
+    logger.debug(f"Parsed arguments: {args}")
+
     if args.command == "analyze":
+        logger.info("Running project analysis...")
         analyze_project()
     elif args.command == "code":
+        logger.info("Running automated coding task...")
         run_automated_coding(args.task)
     else:
+        logger.warning("No valid command provided.")
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()
