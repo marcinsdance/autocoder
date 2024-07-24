@@ -12,6 +12,7 @@ class LangGraphWorkflow:
         self.test_runner = test_runner
         self.error_handler = error_handler
         self.claude_api = claude_api
+        self.project_analyzer = ProjectAnalyzer(file_manager)
 
     def execute(self, task_description):
         try:
@@ -55,3 +56,29 @@ class LangGraphWorkflow:
             error_report = self.error_handler.handle_error(e)
             self.error_handler.log_error(e)
             return error_report
+
+    def analyze_project(self):
+        logger.info("Starting project analysis...")
+        project_analysis = self.project_analyzer.analyze_project()
+        if project_analysis:
+            logger.info("Project analysis complete.")
+            logger.info(f"Root directory: {project_analysis['root_directory']}")
+            logger.info("Project structure:")
+            self._print_structure(project_analysis['project_structure'])
+            logger.info("\nFile list:")
+            for file in project_analysis['file_list']:
+                logger.info(file)
+            logger.info("\nFile contents:")
+            for file, content in project_analysis['file_contents'].items():
+                logger.info(f"\n#File {file}:")
+                logger.info(content[:500] + "..." if len(content) > 500 else content)
+        else:
+            logger.error("Project analysis failed.")
+
+    def _print_structure(self, structure, indent=""):
+        for key, value in structure.items():
+            if value is None:
+                logger.info(f"{indent}{key}")
+            else:
+                logger.info(f"{indent}{key}/")
+                self._print_structure(value, indent + "  ")
