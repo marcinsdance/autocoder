@@ -11,8 +11,11 @@ from .error_handler import ErrorHandler
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def setup_logging(verbose):
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(level=level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 def run_automated_coding(task_description):
     # Initialize configuration
@@ -41,7 +44,8 @@ def run_automated_coding(task_description):
     print(f"Task completed. Result: {result}")
 
 
-def analyze_project():
+def analyze_project(verbose):
+    setup_logging(verbose)
     logger.debug("Starting project analysis...")
     config = Config()
     project_dir = Path.cwd()
@@ -67,6 +71,7 @@ def analyze_project():
 
 def main():
     parser = argparse.ArgumentParser(description="Claude Automated Coding")
+    parser.add_argument('-v', '--verbose', action='store_true', help='Increase output verbosity')
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Analyze command
@@ -78,11 +83,12 @@ def main():
 
     args = parser.parse_args()
 
+    setup_logging(args.verbose)
     logger.debug(f"Parsed arguments: {args}")
 
     if args.command == "analyze":
         logger.info("Running project analysis...")
-        analyze_project()
+        analyze_project(args.verbose)
     elif args.command == "code":
         logger.info("Running automated coding task...")
         run_automated_coding(args.task)
