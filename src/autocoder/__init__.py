@@ -1,3 +1,5 @@
+from .autocoder import main
+
 from .config import Config
 from .file_manager import FileManager
 from .context_builder import ContextBuilder
@@ -9,6 +11,7 @@ from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
 
 __all__ = [
+    'main',
     'Config',
     'FileManager',
     'ContextBuilder',

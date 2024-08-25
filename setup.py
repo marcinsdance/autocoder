@@ -14,7 +14,6 @@ setup(
     url="https://github.com/marcinsdance/autocoder",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
-    py_modules=["autocoder"],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
@@ -35,7 +34,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "autocoder=autocoder:main",
+            "autocoder=autocoder.autocoder:main",
         ],
     },
 )

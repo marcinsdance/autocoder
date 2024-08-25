@@ -2,15 +2,12 @@ import subprocess
 import os
 
 class TestRunner:
-    def __init__(self, project_directory):
-        self.project_directory = project_directory
+    def __init__(self):
+        pass
 
     def run_tests(self):
         try:
-            # Change to the project directory
-            os.chdir(self.project_directory)
-
-            # Run pytest
+            # Run pytest in the current directory
             result = subprocess.run(['pytest'], capture_output=True, text=True)
 
             # Check if tests passed
@@ -22,7 +19,3 @@ class TestRunner:
 
         except Exception as e:
             return False, f"Error running tests: {str(e)}"
-
-        finally:
-            # Change back to the original directory
-            os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

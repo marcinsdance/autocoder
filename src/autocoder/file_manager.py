@@ -1,25 +1,34 @@
 import os
-from .manifest_processor import ManifestProcessor
+import fnmatch
 
 class FileManager:
-   def __init__(self, project_directory):
-       self.project_directory = project_directory
-       self.manifest_processor = ManifestProcessor(project_directory)
+    def __init__(self):
+        self.exclude_patterns = [
+            '.venv', '__pycache__', '*.pyc', '*.pyo', '*.pyd',
+            '.git', '.idea', '.vscode', '*.egg-info',
+            'build', 'dist', '.tox', '.pytest_cache'
+        ]
 
-   def read_file(self, file_path):
-       full_path = os.path.join(self.project_directory, file_path)
-       with open(full_path, 'r') as file:
-           return file.read()
+    def read_file(self, file_path):
+        with open(file_path, 'r') as file:
+            return file.read()
 
-   def write_file(self, file_path, content):
-       full_path = os.path.join(self.project_directory, file_path)
-       with open(full_path, 'w') as file:
-           file.write(content)
+    def write_file(self, file_path, content):
+        with open(file_path, 'w') as file:
+            file.write(content)
 
-   def list_files(self):
-       files = self.manifest_processor.process_manifest()
-       return [os.path.relpath(f, self.project_directory) for f in files]
+    def list_files(self):
+        files = []
+        for root, _, filenames in os.walk('.'):
+            if not self._is_excluded(root):
+                for filename in filenames:
+                    if not self._is_excluded(filename):
+                        files.append(os.path.join(root, filename))
+        return files
 
-   def get_file_contents(self):
-       files = self.list_files()
-       return {file: self.read_file(file) for file in files}
+    def get_file_contents(self):
+        files = self.list_files()
+        return {file: self.read_file(file) for file in files}
+
+    def _is_excluded(self, path):
+        return any(fnmatch.fnmatch(os.path.basename(path), pattern) for pattern in self.exclude_patterns)
