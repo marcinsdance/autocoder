@@ -9,6 +9,7 @@ from .test_runner import TestRunner
 from .error_handler import ErrorHandler
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
+from .state import State
 
 __all__ = [
     'main',
@@ -20,5 +21,6 @@ __all__ = [
     'TestRunner',
     'ErrorHandler',
     'ClaudeAPIWrapper',
-    'LangGraphWorkflow'
+    'LangGraphWorkflow',
+    'State'
 ]
