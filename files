@@ -1,11 +1,12 @@
 ./.env.example
 ./MANIFEST.in
+./README.md
 ./conftest.py
 ./files
+./list_manifest_files.py
 ./release-script.sh
 ./requirements.txt
 ./setup.py
-./src/__init__.py
 ./src/autocoder/__init__.py
 ./src/autocoder/autocoder.py
 ./src/autocoder/claude_api_wrapper.py
@@ -18,6 +19,7 @@
 ./src/autocoder/manifest_processor.py
 ./src/autocoder/task_interpreter.py
 ./src/autocoder/test_runner.py
+./src/autocoder/langgraph_state.py
 ./tests/test_context_builder.py
 ./version.txt
 ./find.sh
