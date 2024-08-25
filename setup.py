@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="autocoder",
-    version="0.0.4",
+    version="0.0.5",
     author="Marcin Dancewicz",
     author_email="mdancewicz@gmail.com",
     description="An automated coding system using Claude API and LangGraph",
@@ -14,6 +14,7 @@ setup(
     url="https://github.com/marcinsdance/autocoder",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
+    py_modules=["autocoder"],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
@@ -34,7 +35,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "autocoder=autocoder.autocoder:main",
+            "autocoder=autocoder:main",
         ],
     },
 )

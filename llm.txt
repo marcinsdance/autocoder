@@ -1,0 +1,955 @@
+#File ./.env.example:
+PROJECT_DIRECTORY=/path/to/your/project
+CLAUDE_API_KEY=your_claude_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
+
+
+
+
+
+
+
+#File ./MANIFEST.in:
+include README.md LICENSE requirements.txt
+recursive-include src *.py
+recursive-include tests *.py
+include bin/autocoder
+global-exclude *.pyc *.pyo pycache
+
+
+
+
+
+
+
+#File ./conftest.py:
+import sys
+from pathlib import Path
+
+# Add the src directory to the Python path
+src_path = Path(__file__).parent / "src"
+sys.path.insert(0, str(src_path))
+
+
+
+
+
+
+
+#File ./files:
+./.env.example
+./MANIFEST.in
+./conftest.py
+./files
+./release-script.sh
+./requirements.txt
+./setup.py
+./src/__init__.py
+./src/autocoder/__init__.py
+./src/autocoder/autocoder.py
+./src/autocoder/claude_api_wrapper.py
+./src/autocoder/code_modifier.py
+./src/autocoder/config.py
+./src/autocoder/context_builder.py
+./src/autocoder/error_handler.py
+./src/autocoder/file_manager.py
+./src/autocoder/langgraph_workflow.py
+./src/autocoder/manifest_processor.py
+./src/autocoder/task_interpreter.py
+./src/autocoder/test_runner.py
+./tests/test_context_builder.py
+./version.txt
+./find.sh
+
+
+
+
+
+
+
+#File ./release-script.sh:
+#!/bin/bash
+
+set -e
+
+# Configuration
+AUTOCODER_REPO="$HOME/git/autocoder"
+HOMEBREW_REPO="$HOME/git/homebrew-autocoder"
+GITHUB_USERNAME="marcinsdance"
+
+# Check if version is provided
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <new-version>"
+    exit 1
+fi
+
+NEW_VERSION="$1"
+
+echo "Starting release process for version $NEW_VERSION"
+
+# Update Autocoder repository
+cd "$AUTOCODER_REPO"
+git checkout develop
+echo "$NEW_VERSION" > version.txt
+git add version.txt
+git commit -m "Bump version to $NEW_VERSION"
+git push origin develop
+
+# Create and push release branch
+git checkout -b "release/$NEW_VERSION"
+git push -u origin "release/$NEW_VERSION"
+
+# Merge release branch to master
+git checkout master
+git merge --no-ff "release/$NEW_VERSION" -m "Merge release $NEW_VERSION"
+
+# Create and push tag
+git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
+git push origin master --tags
+
+# Merge release branch back to develop
+git checkout develop
+git merge --no-ff "release/$NEW_VERSION" -m "Merge release $NEW_VERSION back to develop"
+git push origin develop
+
+# Delete release branch
+git branch -d "release/$NEW_VERSION"
+git push origin --delete "release/$NEW_VERSION"
+
+echo "Autocoder repository updated. Please create a GitHub release manually."
+echo "Press any key to continue when the GitHub release is created..."
+read -n 1 -s
+
+# Update Homebrew formula
+echo "Updating Homebrew formula..."
+cd "$HOMEBREW_REPO"
+echo "Changed directory to $HOMEBREW_REPO"
+git checkout master
+echo "Checked out master branch"
+
+# Download new release and calculate SHA
+TARBALL_URL="https://github.com/$GITHUB_USERNAME/autocoder/archive/refs/tags/v$NEW_VERSION.tar.gz"
+wget "$TARBALL_URL" -O "v$NEW_VERSION.tar.gz"
+NEW_SHA256=$(shasum -a 256 "v$NEW_VERSION.tar.gz" | cut -d' ' -f1)
+
+# Update formula file
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    sed -i '' "s/version \".*\"/version \"$NEW_VERSION\"/" Formula/autocoder.rb
+    sed -i '' "s|url \".*\"|url \"$TARBALL_URL\"|" Formula/autocoder.rb
+    sed -i '' "s/sha256 \".*\"/sha256 \"$NEW_SHA256\"/" Formula/autocoder.rb
+else
+    # Linux and others
+    sed -i "s/version \".*\"/version \"$NEW_VERSION\"/" Formula/autocoder.rb
+    sed -i "s|url \".*\"|url \"$TARBALL_URL\"|" Formula/autocoder.rb
+    sed -i "s/sha256 \".*\"/sha256 \"$NEW_SHA256\"/" Formula/autocoder.rb
+fi
+
+# Commit and push changes
+git add Formula/autocoder.rb
+git commit -m "Update Autocoder formula to version $NEW_VERSION"
+git push origin master
+
+echo "Homebrew formula updated."
+
+# Test the formula
+brew update
+brew uninstall autocoder || true
+brew install --build-from-source ./Formula/autocoder.rb
+
+echo "Release process completed. New version $NEW_VERSION is now available."
+
+
+
+
+
+
+
+#File ./requirements.txt:
+python-dotenv==1.0.1
+requests==2.32.3
+openai==1.36
+anthropic==0.31.2
+langgraph==0.1.9
+pytest==8.2.2
+astor==0.8.1
+
+
+
+
+
+
+#File ./setup.py:
+from setuptools import setup, find_packages
+
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+
+setup(
+    name="autocoder",
+    version="0.0.4",
+    author="Marcin Dancewicz",
+    author_email="mdancewicz@gmail.com",
+    description="An automated coding system using Claude API and LangGraph",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/marcinsdance/autocoder",
+    package_dir={"": "src"},
+    packages=find_packages(where="src"),
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+    ],
+    python_requires=">=3.7",
+    install_requires=[
+        "python-dotenv",
+        "requests",
+        "openai",
+        "anthropic",
+        "langgraph",
+    ],
+    entry_points={
+        "console_scripts": [
+            "autocoder=autocoder.autocoder:main",
+        ],
+    },
+)
+
+
+
+
+
+
+
+#File ./src/__init__.py:
+
+
+
+
+
+
+
+#File ./src/autocoder/__init__.py:
+
+
+
+
+
+
+
+#File ./src/autocoder/autocoder.py:
+import argparse
+import logging
+from .config import Config
+from .file_manager import FileManager
+from .context_builder import ContextBuilder
+from .task_interpreter import TaskInterpreter
+from .code_modifier import CodeModifier
+from .test_runner import TestRunner
+from .error_handler import ErrorHandler
+from .claude_api_wrapper import ClaudeAPIWrapper
+from .langgraph_workflow import LangGraphWorkflow
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def run_automated_coding(task_description):
+    # Initialize configuration
+    config = Config()
+    project_dir = config.get_project_directory()
+    logger.info(f"Using project directory: {project_dir}")
+
+    # Initialize components
+    file_manager = FileManager(project_dir)
+    context_builder = ContextBuilder()
+    task_interpreter = TaskInterpreter()
+    code_modifier = CodeModifier()
+    test_runner = TestRunner()
+    error_handler = ErrorHandler()
+    claude_api = ClaudeAPIWrapper(config.get_api_key())  # Updated to use get_api_key()
+
+    # Initialize LangGraph workflow
+    workflow = LangGraphWorkflow(
+        file_manager, context_builder, task_interpreter,
+        code_modifier, test_runner, error_handler, claude_api
+    )
+
+    # Execute workflow
+    result = workflow.execute(task_description)
+
+    print(f"Task completed. Result: {result}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Claude Automated Coding")
+    parser.add_argument("task", help="The task description for the automated coding process")
+    args = parser.parse_args()
+
+    run_automated_coding(args.task)
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+#File ./src/autocoder/claude_api_wrapper.py:
+from anthropic import Anthropic
+
+
+class ClaudeAPIWrapper:
+    def __init__(self, api_key):
+        self.client = Anthropic(api_key=api_key)
+
+    def generate_response(self, prompt):
+        response = self.client.completions.create(
+            model="claude-3-opus-20240229",
+            prompt=prompt,
+            max_tokens_to_sample=1000
+        )
+        return response.completion
+
+
+
+
+
+
+
+#File ./src/autocoder/code_modifier.py:
+import re
+import ast
+import astor
+
+
+class CodeModifier:
+    def __init__(self):
+        pass
+
+    def modify_code(self, original_code, modifications):
+        try:
+            # Parse the original code into an AST
+            tree = ast.parse(original_code)
+
+            # Apply modifications
+            modified_tree = self.apply_modifications(tree, modifications)
+
+            # Generate the modified code
+            modified_code = astor.to_source(modified_tree)
+
+            return modified_code
+        except SyntaxError:
+            # If parsing fails, fall back to simple string replacement
+            return self.simple_modify(original_code, modifications)
+
+    def apply_modifications(self, tree, modifications):
+        # TODO: Implement more sophisticated AST transformations here
+        # For now, we'll just add a comment at the top of the file
+        new_node = ast.Expr(ast.Str(f"# Modified by AutoCoder: {modifications}"))
+        tree.body.insert(0, new_node)
+        return tree
+
+    def simple_modify(self, original_code, modifications):
+        # Simple string-based modifications
+        # This is a fallback method and should be improved
+        modified_code = f"# Modified by AutoCoder: {modifications}\n\n{original_code}"
+
+        # Apply simple replacements based on the modifications string
+        # This is a very basic implementation and should be enhanced
+        replacements = re.findall(r'replace "([^"]*)" with "([^"]*)"', modifications)
+        for old, new in replacements:
+            modified_code = modified_code.replace(old, new)
+
+        return modified_code
+
+
+
+
+
+
+
+#File ./src/autocoder/config.py:
+import os
+from dotenv import load_dotenv
+
+
+class Config:
+    def __init__(self):
+        # Load .env file from the current working directory
+        load_dotenv()
+
+        # Determine the project directory
+        self.project_directory = self._determine_project_directory()
+
+        # Get the API key, preferring ANTHROPIC_API_KEY if both are present
+        self.api_key = self._get_api_key()
+
+        if not self.api_key:
+            raise ValueError(
+                "Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .env file")
+
+    def _determine_project_directory(self):
+        # First, check if PROJECT_DIRECTORY is set in .env
+        env_project_dir = os.getenv('PROJECT_DIRECTORY')
+        if env_project_dir:
+            return env_project_dir
+
+        # If not set in .env, use the current working directory
+        return os.getcwd()
+
+    def _get_api_key(self):
+        # Prefer ANTHROPIC_API_KEY, but fall back to CLAUDE_API_KEY if necessary
+        anthropic_key = os.getenv('ANTHROPIC_API_KEY')
+        claude_key = os.getenv('CLAUDE_API_KEY')
+
+        return anthropic_key or claude_key
+
+    def get_project_directory(self):
+        return self.project_directory
+
+    def get_api_key(self):
+        return self.api_key
+
+
+
+
+
+
+
+#File ./src/autocoder/context_builder.py:
+class ContextBuilder:
+    def __init__(self):
+        self.context = {}
+
+    def build_context(self, file_manager):
+        file_contents = file_manager.get_file_contents()
+        context = "Project Files:\n\n"
+        for filename, content in file_contents.items():
+            context += f"File: {filename}\n"
+            context += "Content:\n"
+            context += content[:500] + "...\n\n" if len(content) > 500 else content + "\n\n"
+        self.context['built_context'] = context
+        return context
+
+    def get_full_context(self):
+        return self.context
+
+    def add_context(self, key, value):
+        self.context[key] = value
+
+    def get_context(self, key):
+        if key in self.context:
+            return self.context[key]
+        else:
+            raise KeyError(f"Key '{key}' not found in context")
+
+    def update_context(self, key, value):
+        if key in self.context:
+            self.context[key] = value
+        else:
+            raise KeyError(f"Key '{key}' not found in context")
+
+    def remove_context(self, key):
+        if key in self.context:
+            del self.context[key]
+        else:
+            raise KeyError(f"Key '{key}' not found in context")
+
+    def clear_context(self):
+        self.context.clear()
+
+    def context_exists(self, key):
+        return key in self.context
+
+    def get_size(self):
+        return len(self.context)
+
+    def add_multiple_context(self, context_dict):
+        self.context.update(context_dict)
+
+
+
+
+
+
+
+#File ./src/autocoder/error_handler.py:
+import traceback
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class ErrorHandler:
+    def __init__(self):
+        pass
+
+    def handle_error(self, error):
+        if isinstance(error, str):
+            # If error is already a string (e.g., from TestRunner)
+            error_message = error
+        else:
+            # If error is an exception
+            error_message = str(error)
+
+        logger.error(f"An error occurred: {error_message}")
+
+        # Get the full traceback
+        tb = traceback.extract_tb(error.__traceback__) if hasattr(error, '__traceback__') else []
+
+        # Format the error report
+        error_report = f"Error: {error_message}\n\n"
+        error_report += "Traceback:\n"
+        for frame in tb:
+            error_report += f"  File '{frame.filename}', line {frame.lineno}, in {frame.name}\n"
+            error_report += f"    {frame.line}\n"
+
+        # Provide some general advice
+        error_report += "\nSuggestions:\n"
+        error_report += "1. Check the traceback above to identify where the error occurred.\n"
+        error_report += "2. Review any recent changes to the affected files.\n"
+        error_report += "3. Ensure all necessary dependencies are installed and up to date.\n"
+        error_report += "4. If the error persists, consider reverting recent changes or seeking further assistance.\n"
+
+        return error_report
+
+    def log_error(self, error):
+        logger.error(f"An error occurred: {str(error)}")
+        logger.error(traceback.format_exc())
+
+
+
+
+
+
+
+#File ./src/autocoder/file_manager.py:
+import os
+from .manifest_processor import ManifestProcessor
+
+class FileManager:
+   def __init__(self, project_directory):
+       self.project_directory = project_directory
+       self.manifest_processor = ManifestProcessor(project_directory)
+
+   def read_file(self, file_path):
+       full_path = os.path.join(self.project_directory, file_path)
+       with open(full_path, 'r') as file:
+           return file.read()
+
+   def write_file(self, file_path, content):
+       full_path = os.path.join(self.project_directory, file_path)
+       with open(full_path, 'w') as file:
+           file.write(content)
+
+   def list_files(self):
+       files = self.manifest_processor.process_manifest()
+       return [os.path.relpath(f, self.project_directory) for f in files]
+
+   def get_file_contents(self):
+       files = self.list_files()
+       return {file: self.read_file(file) for file in files}
+
+
+
+
+
+
+
+#File ./src/autocoder/langgraph_workflow.py:
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class LangGraphWorkflow:
+    def __init__(self, file_manager, context_builder, task_interpreter,
+                 code_modifier, test_runner, error_handler, claude_api):
+        self.file_manager = file_manager
+        self.context_builder = context_builder
+        self.task_interpreter = task_interpreter
+        self.code_modifier = code_modifier
+        self.test_runner = test_runner
+        self.error_handler = error_handler
+        self.claude_api = claude_api
+
+    def execute(self, task_description):
+        try:
+            # Interpret the task
+            interpreted_task = self.task_interpreter.interpret_task(task_description)
+            logger.info(f"Task interpreted: {interpreted_task['task_type']}")
+
+            # Build context
+            files = self.file_manager.list_files()
+            file_contents = {f: self.file_manager.read_file(f) for f in files}
+            context = self.context_builder.build_context(file_contents)
+            logger.info("Context built successfully")
+
+            # Generate prompt for Claude
+            task_prompt = self.task_interpreter.get_prompt_for_task(interpreted_task)
+            full_prompt = f"Context:\n{context}\n\nTask:\n{task_prompt}"
+            logger.info("Prompt generated for Claude API")
+
+            # Get response from Claude
+            modifications = self.claude_api.generate_response(full_prompt)
+            logger.info("Received response from Claude API")
+
+            # Apply modifications
+            for file in interpreted_task['affected_files']:
+                if file in file_contents:
+                    original_code = file_contents[file]
+                    modified_code = self.code_modifier.modify_code(original_code, modifications)
+                    self.file_manager.write_file(file, modified_code)
+                    logger.info(f"Modified file: {file}")
+
+            # Run tests
+            success, test_result = self.test_runner.run_tests()
+            if not success:
+                error_report = self.error_handler.handle_error(test_result)
+                logger.warning("Tests failed. See error report for details.")
+                return error_report
+
+            logger.info("Task completed successfully")
+            return f"Task completed successfully. Test results: {test_result}"
+        except Exception as e:
+            error_report = self.error_handler.handle_error(e)
+            self.error_handler.log_error(e)
+            return error_report
+
+
+
+
+
+
+
+#File ./src/autocoder/manifest_processor.py:
+import os
+import glob
+import fnmatch
+
+class ManifestProcessor:
+    def __init__(self, project_root):
+        self.project_root = project_root
+        self.exclude_patterns = [
+            '.venv', '__pycache__', '*.pyc', '*.pyo', '*.pyd',
+            '.git', '.idea', '.vscode', '*.egg-info',
+            'build', 'dist', '.tox', '.pytest_cache'
+        ]
+
+    def is_excluded(self, path):
+        abs_path = os.path.abspath(path)
+        path_parts = abs_path.split(os.sep)
+        for i in range(len(path_parts)):
+            current_path = os.sep.join(path_parts[:i+1])
+            if any(fnmatch.fnmatch(os.path.basename(current_path), pattern) for pattern in self.exclude_patterns):
+                return True
+        return False
+
+    def process_manifest(self, manifest_file='MANIFEST.in'):
+        manifest_path = os.path.join(self.project_root, manifest_file)
+        if not os.path.exists(manifest_path):
+            print(f"Error: {manifest_file} not found in the project root directory.")
+            return []
+
+        included_files = set()
+        excluded_files = set()
+
+        with open(manifest_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split()
+                command = parts[0].lower()
+                patterns = parts[1:]
+
+                if command in ('include', 'recursive-include'):
+                    self._handle_include(command, patterns, included_files)
+                elif command in ('exclude', 'recursive-exclude'):
+                    self._handle_exclude(command, patterns, excluded_files)
+                elif command == 'global-include':
+                    self._handle_global_include(patterns, included_files)
+                elif command == 'global-exclude':
+                    self._handle_global_exclude(patterns, excluded_files)
+
+        final_files = sorted(included_files - excluded_files)
+        return final_files
+
+    def _handle_include(self, command, patterns, included_files):
+        for pattern in patterns:
+            if command == 'include':
+                included_files.update(f for f in glob.glob(os.path.join(self.project_root, pattern)) if not self.is_excluded(f))
+            else:  # recursive-include
+                for root, _, filenames in os.walk(self.project_root):
+                    if not self.is_excluded(root):
+                        for filename in fnmatch.filter(filenames, pattern):
+                            path = os.path.join(root, filename)
+                            if not self.is_excluded(path):
+                                included_files.add(path)
+
+    def _handle_exclude(self, command, patterns, excluded_files):
+        for pattern in patterns:
+            if command == 'exclude':
+                excluded_files.update(glob.glob(os.path.join(self.project_root, pattern)))
+            else:  # recursive-exclude
+                for root, _, filenames in os.walk(self.project_root):
+                    for filename in fnmatch.filter(filenames, pattern):
+                        excluded_files.add(os.path.join(root, filename))
+
+    def _handle_global_include(self, patterns, included_files):
+        for pattern in patterns:
+            for root, _, filenames in os.walk(self.project_root):
+                if not self.is_excluded(root):
+                    included_files.update(
+                        os.path.join(root, f) for f in fnmatch.filter(filenames, pattern)
+                        if not self.is_excluded(os.path.join(root, f))
+                    )
+
+    def _handle_global_exclude(self, patterns, excluded_files):
+        for pattern in patterns:
+            for root, _, filenames in os.walk(self.project_root):
+                excluded_files.update(
+                    os.path.join(root, f) for f in fnmatch.filter(filenames, pattern)
+                )
+
+
+
+
+
+
+
+#File ./src/autocoder/task_interpreter.py:
+import re
+from enum import Enum
+
+
+class TaskType(Enum):
+    ADD_FEATURE = "add_feature"
+    FIX_BUG = "fix_bug"
+    REFACTOR = "refactor"
+    OPTIMIZE = "optimize"
+    TEST = "test"
+    DOCUMENT = "document"
+    UNKNOWN = "unknown"
+
+
+class TaskInterpreter:
+    def __init__(self):
+        self.task_type_keywords = {
+            TaskType.ADD_FEATURE: ["add", "create", "implement", "new feature"],
+            TaskType.FIX_BUG: ["fix", "bug", "issue", "problem", "error"],
+            TaskType.REFACTOR: ["refactor", "restructure", "reorganize"],
+            TaskType.OPTIMIZE: ["optimize", "improve performance", "speed up"],
+            TaskType.TEST: ["test", "unit test", "integration test"],
+            TaskType.DOCUMENT: ["document", "add comments", "explain"]
+        }
+
+    def interpret_task(self, task_description):
+        task_type = self._determine_task_type(task_description)
+        affected_files = self._identify_affected_files(task_description)
+        subtasks = self._break_into_subtasks(task_description)
+
+        return {
+            "original_description": task_description,
+            "task_type": task_type.value,
+            "affected_files": affected_files,
+            "subtasks": subtasks
+        }
+
+    def _determine_task_type(self, task_description):
+        task_description_lower = task_description.lower()
+        for task_type, keywords in self.task_type_keywords.items():
+            if any(keyword in task_description_lower for keyword in keywords):
+                return task_type
+        return TaskType.UNKNOWN
+
+    def _identify_affected_files(self, task_description):
+        # Simple regex to find file names (adjust as needed)
+        file_pattern = r'\b[\w-]+\.(py|js|html|css|md)\b'
+        return list(set(re.findall(file_pattern, task_description)))
+
+    def _break_into_subtasks(self, task_description):
+        # Simple subtask breakdown (can be improved with NLP techniques)
+        subtasks = task_description.split(". ")
+        return [subtask.strip() for subtask in subtasks if subtask.strip()]
+
+    def get_prompt_for_task(self, interpreted_task):
+        task_type = interpreted_task['task_type']
+        affected_files = ", ".join(interpreted_task['affected_files']) if interpreted_task[
+            'affected_files'] else "not specified"
+
+        prompt = f"Task Type: {task_type}\n"
+        prompt += f"Affected Files: {affected_files}\n"
+        prompt += "Original Description: " + interpreted_task['original_description'] + "\n"
+        prompt += "Subtasks:\n"
+        for i, subtask in enumerate(interpreted_task['subtasks'], 1):
+            prompt += f"{i}. {subtask}\n"
+
+        prompt += "\nBased on this information, please provide a detailed plan to accomplish this task. Include specific code modifications or additions where applicable."
+
+        return prompt
+
+
+
+
+
+
+
+#File ./src/autocoder/test_runner.py:
+import subprocess
+import os
+
+class TestRunner:
+    def __init__(self, project_directory):
+        self.project_directory = project_directory
+
+    def run_tests(self):
+        try:
+            # Change to the project directory
+            os.chdir(self.project_directory)
+
+            # Run pytest
+            result = subprocess.run(['pytest'], capture_output=True, text=True)
+
+            # Check if tests passed
+            if result.returncode == 0:
+                return True, "All tests passed"
+            else:
+                # If tests failed, return the error output
+                return False, result.stderr
+
+        except Exception as e:
+            return False, f"Error running tests: {str(e)}"
+
+        finally:
+            # Change back to the original directory
+            os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+
+
+
+
+
+#File ./tests/test_context_builder.py:
+import pytest
+import os
+from autocoder.context_builder import ContextBuilder
+from autocoder.file_manager import FileManager
+
+
+@pytest.fixture
+def project_root():
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+@pytest.fixture
+def file_manager(project_root):
+    return FileManager(project_root)
+
+
+@pytest.fixture
+def context_builder():
+    return ContextBuilder()
+
+
+def test_build_context_with_manifest(context_builder, file_manager):
+    context = context_builder.build_context(file_manager)
+
+    print("\nBuild Context Output (Based on MANIFEST.in):")
+    print(context)
+    print("End of Build Context Output")
+
+    assert "Project Files:" in context
+
+    # Check for some expected files (adjust these based on your project structure)
+    assert "File: src/autocoder/context_builder.py" in context
+    assert "File: src/autocoder/file_manager.py" in context
+    assert "File: src/autocoder/manifest_processor.py" in context
+
+    # Check that the content of files is included
+    assert "class ContextBuilder:" in context
+    assert "class FileManager:" in context
+    assert "class ManifestProcessor:" in context
+
+
+def test_context_builder_methods(context_builder):
+    # Test adding and getting context
+    context_builder.add_context("key1", "value1")
+    assert context_builder.get_context("key1") == "value1"
+
+    # Test updating context
+    context_builder.update_context("key1", "new_value1")
+    assert context_builder.get_context("key1") == "new_value1"
+
+    # Test removing context
+    context_builder.remove_context("key1")
+    with pytest.raises(KeyError):
+        context_builder.get_context("key1")
+
+    # Test clearing context
+    context_builder.add_context("key2", "value2")
+    context_builder.clear_context()
+    assert context_builder.get_size() == 0
+
+    # Test context existence
+    context_builder.add_context("key3", "value3")
+    assert context_builder.context_exists("key3")
+    assert not context_builder.context_exists("key4")
+
+    # Test getting size
+    assert context_builder.get_size() == 1
+
+    # Test adding multiple context
+    context_builder.add_multiple_context({"key4": "value4", "key5": "value5"})
+    assert context_builder.get_size() == 3
+
+
+def test_get_full_context(context_builder):
+    context_builder.add_multiple_context({"key1": "value1", "key2": "value2"})
+    full_context = context_builder.get_full_context()
+    assert full_context == {"key1": "value1", "key2": "value2"}
+
+
+
+
+
+
+#File ./version.txt:
+0.0.5
+
+
+
+
+
+
+
+#File ./find.sh:
+find . -type f ! -name ".env" | grep -vi venv | grep -vi idea | grep -vi llm | grep -vi ".git" | grep -vi pycache | grep -vi attachments | grep -vi processor.db | grep -vi debug
+
+
+
+
+
+
+
+#File ./README.md:
+# Claude Automated Coding
+
+Claude Automated Coding is an innovative tool that leverages the power of AI to automate coding tasks. It uses the Claude API and LangGraph to interpret coding tasks, modify code, and run tests automatically.
+
+## Features
+
+- Task interpretation using natural language processing
+- Automated code modification based on task description
+- Context-aware code changes
+- Automatic test running after modifications
+- Detailed error handling and reporting
+
