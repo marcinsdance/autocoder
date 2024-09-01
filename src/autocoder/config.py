@@ -3,10 +3,7 @@ from dotenv import load_dotenv
 
 class Config:
     def __init__(self):
-        # Load .env file from the current working directory
         load_dotenv()
-
-        # Get the API key, preferring ANTHROPIC_API_KEY if both are present
         self.api_key = self._get_api_key()
 
         if not self.api_key:

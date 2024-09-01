@@ -4,22 +4,10 @@ from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
-from state import State  # Add this import
+from .state import State
 
 logger = logging.getLogger(__name__)
 
-class LangGraphWorkflow:
-    def __init__(self, file_manager, context_builder, task_interpreter,
-                 code_modifier, test_runner, error_handler, claude_api):
-        self.file_manager = file_manager
-        self.context_builder = context_builder
-        self.task_interpreter = task_interpreter
-        self.code_modifier = code_modifier
-        self.test_runner = test_runner
-        self.error_handler = error_handler
-        self.claude_api = claude_api
-        self.graph = self._build_graph()
-        self.memory = MemorySaver()
 
 class LangGraphWorkflow:
     def __init__(self, file_manager, context_builder, task_interpreter,
@@ -36,22 +24,17 @@ class LangGraphWorkflow:
 
     def _build_graph(self):
         graph = StateGraph(State)
-
-        # Add nodes
         graph.add_node("interpret_task", self._interpret_task)
         graph.add_node("build_context", self._build_context)
         graph.add_node("generate_modifications", self._generate_modifications)
         graph.add_node("apply_modifications", self._apply_modifications)
         graph.add_node("run_tests", self._run_tests)
 
-        # Add edges
         graph.add_edge(START, "interpret_task")
         graph.add_edge("interpret_task", "build_context")
         graph.add_edge("build_context", "generate_modifications")
         graph.add_edge("generate_modifications", "apply_modifications")
         graph.add_edge("apply_modifications", "run_tests")
-
-        # Add conditional edge for error handling
         graph.add_conditional_edges(
             "run_tests",
             self._handle_test_results,
