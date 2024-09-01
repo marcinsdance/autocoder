@@ -143,7 +143,6 @@ sys.path.insert(0, str(src_path))
 ./src/autocoder/__init__.py
 ./src/autocoder/autocoder.py
 ./src/autocoder/claude_api_wrapper.py
-./src/autocoder/code_modifier.py
 ./src/autocoder/config.py
 ./src/autocoder/context_builder.py
 ./src/autocoder/error_handler.py
@@ -152,7 +151,8 @@ sys.path.insert(0, str(src_path))
 ./src/autocoder/manifest_processor.py
 ./src/autocoder/task_interpreter.py
 ./src/autocoder/test_runner.py
-./src/autocoder/langgraph_state.py
+./src/autocoder/state.py
+./src/autocoder/code_modifier.py
 ./tests/test_context_builder.py
 ./version.txt
 ./find.sh
@@ -437,6 +437,7 @@ from .test_runner import TestRunner
 from .error_handler import ErrorHandler
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
+from .state import State
 
 __all__ = [
     'main',
@@ -448,7 +449,8 @@ __all__ = [
     'TestRunner',
     'ErrorHandler',
     'ClaudeAPIWrapper',
-    'LangGraphWorkflow'
+    'LangGraphWorkflow',
+    'State'
 ]
 
 
@@ -507,6 +509,7 @@ def main():
 
     print(result)
 
+
 if __name__ == "__main__":
     main()
 
@@ -538,68 +541,13 @@ class ClaudeAPIWrapper:
 
 
 
-#File ./src/autocoder/code_modifier.py:
-import re
-import ast
-import astor
-
-
-class CodeModifier:
-    def __init__(self):
-        pass
-
-    def modify_code(self, original_code, modifications):
-        try:
-            # Parse the original code into an AST
-            tree = ast.parse(original_code)
-
-            # Apply modifications
-            modified_tree = self.apply_modifications(tree, modifications)
-
-            # Generate the modified code
-            modified_code = astor.to_source(modified_tree)
-
-            return modified_code
-        except SyntaxError:
-            # If parsing fails, fall back to simple string replacement
-            return self.simple_modify(original_code, modifications)
-
-    def apply_modifications(self, tree, modifications):
-        # TODO: Implement more sophisticated AST transformations here
-        # For now, we'll just add a comment at the top of the file
-        new_node = ast.Expr(ast.Str(f"# Modified by AutoCoder: {modifications}"))
-        tree.body.insert(0, new_node)
-        return tree
-
-    def simple_modify(self, original_code, modifications):
-        # Simple string-based modifications
-        # This is a fallback method and should be improved
-        modified_code = f"# Modified by AutoCoder: {modifications}\n\n{original_code}"
-
-        # Apply simple replacements based on the modifications string
-        # This is a very basic implementation and should be enhanced
-        replacements = re.findall(r'replace "([^"]*)" with "([^"]*)"', modifications)
-        for old, new in replacements:
-            modified_code = modified_code.replace(old, new)
-
-        return modified_code
-
-
-
-
-
-
-
 #File ./src/autocoder/config.py:
 import os
 from dotenv import load_dotenv
 
 class Config:
     def __init__(self):
-        # Load .env file from the current working directory
         load_dotenv()
-
-        # Get the API key, preferring ANTHROPIC_API_KEY if both are present
         self.api_key = self._get_api_key()
 
         if not self.api_key:
@@ -778,16 +726,10 @@ from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
+from .state import State
 
 logger = logging.getLogger(__name__)
 
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
-    files: dict
-    context: str
-    interpreted_task: dict
-    modifications: str
-    test_results: str
 
 class LangGraphWorkflow:
     def __init__(self, file_manager, context_builder, task_interpreter,
@@ -804,22 +746,17 @@ class LangGraphWorkflow:
 
     def _build_graph(self):
         graph = StateGraph(State)
-
-        # Add nodes
         graph.add_node("interpret_task", self._interpret_task)
         graph.add_node("build_context", self._build_context)
         graph.add_node("generate_modifications", self._generate_modifications)
         graph.add_node("apply_modifications", self._apply_modifications)
         graph.add_node("run_tests", self._run_tests)
 
-        # Add edges
         graph.add_edge(START, "interpret_task")
         graph.add_edge("interpret_task", "build_context")
         graph.add_edge("build_context", "generate_modifications")
         graph.add_edge("generate_modifications", "apply_modifications")
         graph.add_edge("apply_modifications", "run_tests")
-
-        # Add conditional edge for error handling
         graph.add_conditional_edges(
             "run_tests",
             self._handle_test_results,
@@ -1089,7 +1026,69 @@ class TestRunner:
 
 
 
-#File ./src/autocoder/langgraph_state.py:
+#File ./src/autocoder/state.py:
+from typing import Annotated, TypedDict
+from langgraph.graph.message import add_messages
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+    files: dict
+    context: str
+    interpreted_task: dict
+    modifications: str
+    test_results: str
+
+
+
+
+
+
+
+#File ./src/autocoder/code_modifier.py:
+import re
+import ast
+import astor
+
+
+class CodeModifier:
+    def __init__(self):
+        pass
+
+    def modify_code(self, original_code, modifications):
+        try:
+            # Parse the original code into an AST
+            tree = ast.parse(original_code)
+
+            # Apply modifications
+            modified_tree = self.apply_modifications(tree, modifications)
+
+            # Generate the modified code
+            modified_code = astor.to_source(modified_tree)
+
+            return modified_code
+        except SyntaxError:
+            # If parsing fails, fall back to simple string replacement
+            return self.simple_modify(original_code, modifications)
+
+    def apply_modifications(self, tree, modifications):
+        # TODO: Implement more sophisticated AST transformations here
+        # For now, we'll just add a comment at the top of the file
+        new_node = ast.Expr(ast.Str(f"# Modified by AutoCoder: {modifications}"))
+        tree.body.insert(0, new_node)
+        return tree
+
+    def simple_modify(self, original_code, modifications):
+        # Simple string-based modifications
+        # This is a fallback method and should be improved
+        modified_code = f"# Modified by AutoCoder: {modifications}\n\n{original_code}"
+
+        # Apply simple replacements based on the modifications string
+        # This is a very basic implementation and should be enhanced
+        replacements = re.findall(r'replace "([^"]*)" with "([^"]*)"', modifications)
+        for old, new in replacements:
+            modified_code = modified_code.replace(old, new)
+
+        return modified_code
 
 
 

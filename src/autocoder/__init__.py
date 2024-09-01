@@ -1,6 +1,5 @@
 from .autocoder import main
 
-from .config import Config
 from .file_manager import FileManager
 from .context_builder import ContextBuilder
 from .task_interpreter import TaskInterpreter
@@ -13,7 +12,6 @@ from .state import State
 
 __all__ = [
     'main',
-    'Config',
     'FileManager',
     'ContextBuilder',
     'TaskInterpreter',

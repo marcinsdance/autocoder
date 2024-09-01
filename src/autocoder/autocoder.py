@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 import argparse
 import logging
+import os
+from dotenv import load_dotenv
 
-from .config import Config
 from .file_manager import FileManager
 from .context_builder import ContextBuilder
 from .task_interpreter import TaskInterpreter
@@ -24,8 +25,13 @@ def main():
         print("Please provide a task description.")
         return
 
-    # Initialize configuration
-    config = Config()
+    # Load environment variables
+    load_dotenv()
+
+    # Get API key directly from environment
+    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
+    if not api_key:
+        raise ValueError("Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .env file")
 
     # Initialize components
     file_manager = FileManager()
@@ -34,7 +40,7 @@ def main():
     code_modifier = CodeModifier()
     test_runner = TestRunner()
     error_handler = ErrorHandler()
-    claude_api = ClaudeAPIWrapper(config.get_api_key())
+    claude_api = ClaudeAPIWrapper(api_key)
 
     # Initialize LangGraph workflow
     workflow = LangGraphWorkflow(
@@ -46,7 +52,6 @@ def main():
     result = workflow.execute(args.task)
 
     print(result)
-
 
 if __name__ == "__main__":
     main()
