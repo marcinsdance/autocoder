@@ -5,9 +5,9 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
 from .state import State
+from .nodes.tools.directory_checker import check_autocoder_dir
 
 logger = logging.getLogger(__name__)
-
 
 class LangGraphWorkflow:
     def __init__(self, file_manager, context_builder, task_interpreter,
@@ -24,13 +24,15 @@ class LangGraphWorkflow:
 
     def _build_graph(self):
         graph = StateGraph(State)
+        graph.add_node("check_autocoder_dir", check_autocoder_dir)
         graph.add_node("interpret_task", self._interpret_task)
         graph.add_node("build_context", self._build_context)
         graph.add_node("generate_modifications", self._generate_modifications)
         graph.add_node("apply_modifications", self._apply_modifications)
         graph.add_node("run_tests", self._run_tests)
 
-        graph.add_edge(START, "interpret_task")
+        graph.add_edge(START, "check_autocoder_dir")
+        graph.add_edge("check_autocoder_dir", "interpret_task")
         graph.add_edge("interpret_task", "build_context")
         graph.add_edge("build_context", "generate_modifications")
         graph.add_edge("generate_modifications", "apply_modifications")
@@ -86,7 +88,10 @@ class LangGraphWorkflow:
 
     def execute(self, task_description, config=None):
         try:
-            initial_state = {"messages": [("user", task_description)]}
+            initial_state = {
+                "messages": [("user", task_description)],
+                "autocoder_dir_exists": False  # Initialize this in the state
+            }
             for event in self.graph.stream(initial_state, config):
                 if "messages" in event:
                     print(event["messages"][-1])
