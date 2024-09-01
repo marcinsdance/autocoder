@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import argparse
 import logging
 import os
@@ -12,7 +13,7 @@ from .test_runner import TestRunner
 from .error_handler import ErrorHandler
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
-from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder
+from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder, display_usage_message
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,7 +29,10 @@ def main():
         return
 
     if args.command == "help" or (args.command == "task" and not args.task_description):
-        display_init_message()
+        if check_autocoder_dir():
+            display_usage_message()
+        else:
+            display_init_message()
         return
 
     if args.command == "task":

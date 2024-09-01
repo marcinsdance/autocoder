@@ -1,8 +1,6 @@
 ./.env.example
-./MANIFEST.in
 ./README.md
 ./conftest.py
-./files
 ./list_manifest_files.py
 ./release-script.sh
 ./requirements.txt
@@ -18,6 +16,12 @@
 ./src/autocoder/test_runner.py
 ./src/autocoder/state.py
 ./src/autocoder/code_modifier.py
+./src/autocoder/nodes/tools/directory_checker.py
+./src/autocoder/nodes/tools/__init__.py
+./src/autocoder/nodes/__init__.py
 ./tests/test_context_builder.py
 ./version.txt
 ./find.sh
+./MANIFEST.in
+./files
+./.autocoder/project_state.txt

@@ -9,19 +9,6 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 
 
-#File ./MANIFEST.in:
-include README.md LICENSE requirements.txt
-recursive-include src *.py
-recursive-include tests *.py
-include bin/autocoder
-global-exclude *.pyc *.pyo pycache
-
-
-
-
-
-
-
 #File ./README.md:
 # Claude Automated Coding
 
@@ -123,37 +110,6 @@ from pathlib import Path
 # Add the src directory to the Python path
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
-
-
-
-
-
-
-
-#File ./files:
-./.env.example
-./MANIFEST.in
-./README.md
-./conftest.py
-./files
-./list_manifest_files.py
-./release-script.sh
-./requirements.txt
-./setup.py
-./src/autocoder/__init__.py
-./src/autocoder/autocoder.py
-./src/autocoder/claude_api_wrapper.py
-./src/autocoder/context_builder.py
-./src/autocoder/error_handler.py
-./src/autocoder/file_manager.py
-./src/autocoder/langgraph_workflow.py
-./src/autocoder/task_interpreter.py
-./src/autocoder/test_runner.py
-./src/autocoder/state.py
-./src/autocoder/code_modifier.py
-./tests/test_context_builder.py
-./version.txt
-./find.sh
 
 
 
@@ -470,46 +426,57 @@ from .test_runner import TestRunner
 from .error_handler import ErrorHandler
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
+from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def main():
     parser = argparse.ArgumentParser(description="Claude Automated Coding")
-    parser.add_argument("task", nargs='?', default="", help="The task description for the automated coding process")
+    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "help"], help="Command to execute")
+    parser.add_argument("task_description", nargs='?', default="", help="The task description for the automated coding process")
     args = parser.parse_args()
 
-    if not args.task:
-        print("Please provide a task description.")
+    if args.command == "init":
+        init_autocoder()
         return
 
-    # Load environment variables
-    load_dotenv()
+    if args.command == "help" or (args.command == "task" and not args.task_description):
+        display_init_message()
+        return
 
-    # Get API key directly from environment
-    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
-    if not api_key:
-        raise ValueError("Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .env file")
+    if args.command == "task":
+        if not check_autocoder_dir():
+            display_init_message()
+            return
 
-    # Initialize components
-    file_manager = FileManager()
-    context_builder = ContextBuilder()
-    task_interpreter = TaskInterpreter()
-    code_modifier = CodeModifier()
-    test_runner = TestRunner()
-    error_handler = ErrorHandler()
-    claude_api = ClaudeAPIWrapper(api_key)
+        # Load environment variables
+        load_dotenv()
 
-    # Initialize LangGraph workflow
-    workflow = LangGraphWorkflow(
-        file_manager, context_builder, task_interpreter,
-        code_modifier, test_runner, error_handler, claude_api
-    )
+        # Get API key directly from environment
+        api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
+        if not api_key:
+            raise ValueError("Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .env file")
 
-    # Execute workflow
-    result = workflow.execute(args.task)
+        # Initialize components
+        file_manager = FileManager()
+        context_builder = ContextBuilder()
+        task_interpreter = TaskInterpreter()
+        code_modifier = CodeModifier()
+        test_runner = TestRunner()
+        error_handler = ErrorHandler()
+        claude_api = ClaudeAPIWrapper(api_key)
 
-    print(result)
+        # Initialize LangGraph workflow
+        workflow = LangGraphWorkflow(
+            file_manager, context_builder, task_interpreter,
+            code_modifier, test_runner, error_handler, claude_api
+        )
+
+        # Execute workflow
+        result = workflow.execute(args.task_description)
+
+        print(result)
 
 if __name__ == "__main__":
     main()
@@ -989,6 +956,73 @@ class CodeModifier:
 
 
 
+#File ./src/autocoder/nodes/tools/directory_checker.py:
+import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+def check_autocoder_dir():
+    autocoder_dir = os.path.join(os.getcwd(), ".autocoder")
+    dir_exists = os.path.isdir(autocoder_dir)
+    project_state_file = os.path.join(autocoder_dir, "project_state.txt")
+    file_exists = os.path.isfile(project_state_file)
+    logger.info(f"Current working directory: {os.getcwd()}")
+    logger.info(f".autocoder directory path: {autocoder_dir}")
+    logger.info(f".autocoder directory exists: {dir_exists}")
+    logger.info(f"project_state.txt path: {project_state_file}")
+    logger.info(f"project_state.txt exists: {file_exists}")
+    return dir_exists and file_exists
+
+def display_init_message():
+    message = """
+Autocoder isn't initialized in this location. Please run "autocoder init" command for the autocoder to start working on files in this location.
+
+Usage: autocoder [command]
+The available commands for execution are listed below.
+Commands:
+  init          Init autocoder in this directory
+  task          Execute a task in an initialized directory
+  help          Display help information
+"""
+    print(message)
+
+def init_autocoder():
+    autocoder_dir = os.path.join(os.getcwd(), ".autocoder")
+    project_state_file = os.path.join(autocoder_dir, "project_state.txt")
+    
+    if not check_autocoder_dir():
+        os.makedirs(autocoder_dir)
+        with open(project_state_file, 'w') as f:
+            f.write('initialized')
+        logger.info("Autocoder initialized successfully in this directory with project state 'initialized'.")
+        print("Autocoder initialized successfully in this directory with project state 'initialized'.")
+    else:
+        logger.info("Autocoder is already initialized in this directory.")
+        print("Autocoder is already initialized in this directory.")
+
+
+
+
+
+
+
+#File ./src/autocoder/nodes/tools/__init__.py:
+
+
+
+
+
+
+
+#File ./src/autocoder/nodes/__init__.py:
+
+
+
+
+
+
+
 #File ./tests/test_context_builder.py:
 import pytest
 import os
@@ -1085,6 +1119,62 @@ def test_get_full_context(context_builder):
 #File ./find.sh:
 find . -type f ! -name ".env" | grep -vi venv | grep -vi idea | grep -vi llm | grep -vi ".git" | grep -vi pycache | grep -vi attachments | grep -vi processor.db | grep -vi debug | grep -vi egg
 
+
+
+
+
+
+
+#File ./MANIFEST.in:
+include README.md LICENSE requirements.txt
+recursive-include src *.py
+recursive-include tests *.py
+include bin/autocoder
+global-exclude *.pyc *.pyo pycache
+
+
+
+
+
+
+
+#File ./files:
+./.env.example
+./README.md
+./conftest.py
+./list_manifest_files.py
+./release-script.sh
+./requirements.txt
+./setup.py
+./src/autocoder/__init__.py
+./src/autocoder/autocoder.py
+./src/autocoder/claude_api_wrapper.py
+./src/autocoder/context_builder.py
+./src/autocoder/error_handler.py
+./src/autocoder/file_manager.py
+./src/autocoder/langgraph_workflow.py
+./src/autocoder/task_interpreter.py
+./src/autocoder/test_runner.py
+./src/autocoder/state.py
+./src/autocoder/code_modifier.py
+./src/autocoder/nodes/tools/directory_checker.py
+./src/autocoder/nodes/tools/__init__.py
+./src/autocoder/nodes/__init__.py
+./tests/test_context_builder.py
+./version.txt
+./find.sh
+./MANIFEST.in
+./files
+./.autocoder/project_state.txt
+
+
+
+
+
+
+
+#File ./.autocoder/project_state.txt:
+initialized
 
 
 
