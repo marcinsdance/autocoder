@@ -24,10 +24,14 @@ Commands:
 
 def init_autocoder():
     autocoder_dir = os.path.join(os.getcwd(), ".autocoder")
+    project_state_file = os.path.join(autocoder_dir, "project_state.txt")
+
     if not os.path.exists(autocoder_dir):
         os.makedirs(autocoder_dir)
-        logger.info("Autocoder initialized successfully in this directory.")
-        print("Autocoder initialized successfully in this directory.")
+        with open(project_state_file, 'w') as f:
+            f.write('initialized')
+        logger.info("Autocoder initialized successfully in this directory with project state 'initialized'.")
+        print("Autocoder initialized successfully in this directory with project state 'initialized'.")
     else:
         logger.info("Autocoder is already initialized in this directory.")
         print("Autocoder is already initialized in this directory.")
