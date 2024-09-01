@@ -143,12 +143,10 @@ sys.path.insert(0, str(src_path))
 ./src/autocoder/__init__.py
 ./src/autocoder/autocoder.py
 ./src/autocoder/claude_api_wrapper.py
-./src/autocoder/config.py
 ./src/autocoder/context_builder.py
 ./src/autocoder/error_handler.py
 ./src/autocoder/file_manager.py
 ./src/autocoder/langgraph_workflow.py
-./src/autocoder/manifest_processor.py
 ./src/autocoder/task_interpreter.py
 ./src/autocoder/test_runner.py
 ./src/autocoder/state.py
@@ -428,7 +426,6 @@ setup(
 #File ./src/autocoder/__init__.py:
 from .autocoder import main
 
-from .config import Config
 from .file_manager import FileManager
 from .context_builder import ContextBuilder
 from .task_interpreter import TaskInterpreter
@@ -441,7 +438,6 @@ from .state import State
 
 __all__ = [
     'main',
-    'Config',
     'FileManager',
     'ContextBuilder',
     'TaskInterpreter',
@@ -463,8 +459,9 @@ __all__ = [
 #!/usr/bin/env python3
 import argparse
 import logging
+import os
+from dotenv import load_dotenv
 
-from .config import Config
 from .file_manager import FileManager
 from .context_builder import ContextBuilder
 from .task_interpreter import TaskInterpreter
@@ -486,8 +483,13 @@ def main():
         print("Please provide a task description.")
         return
 
-    # Initialize configuration
-    config = Config()
+    # Load environment variables
+    load_dotenv()
+
+    # Get API key directly from environment
+    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
+    if not api_key:
+        raise ValueError("Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .env file")
 
     # Initialize components
     file_manager = FileManager()
@@ -496,7 +498,7 @@ def main():
     code_modifier = CodeModifier()
     test_runner = TestRunner()
     error_handler = ErrorHandler()
-    claude_api = ClaudeAPIWrapper(config.get_api_key())
+    claude_api = ClaudeAPIWrapper(api_key)
 
     # Initialize LangGraph workflow
     workflow = LangGraphWorkflow(
@@ -508,7 +510,6 @@ def main():
     result = workflow.execute(args.task)
 
     print(result)
-
 
 if __name__ == "__main__":
     main()
@@ -534,35 +535,6 @@ class ClaudeAPIWrapper:
             max_tokens_to_sample=1000
         )
         return response.completion
-
-
-
-
-
-
-
-#File ./src/autocoder/config.py:
-import os
-from dotenv import load_dotenv
-
-class Config:
-    def __init__(self):
-        load_dotenv()
-        self.api_key = self._get_api_key()
-
-        if not self.api_key:
-            raise ValueError(
-                "Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .env file")
-
-    def _get_api_key(self):
-        # Prefer ANTHROPIC_API_KEY, but fall back to CLAUDE_API_KEY if necessary
-        anthropic_key = os.getenv('ANTHROPIC_API_KEY')
-        claude_key = os.getenv('CLAUDE_API_KEY')
-
-        return anthropic_key or claude_key
-
-    def get_api_key(self):
-        return self.api_key
 
 
 
@@ -722,14 +694,14 @@ class FileManager:
 #File ./src/autocoder/langgraph_workflow.py:
 import logging
 from typing import Annotated, TypedDict
-from langgraph.graph import StateGraph, START
+from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
 from .state import State
+from .nodes.tools.directory_checker import check_autocoder_dir
 
 logger = logging.getLogger(__name__)
-
 
 class LangGraphWorkflow:
     def __init__(self, file_manager, context_builder, task_interpreter,
@@ -746,13 +718,24 @@ class LangGraphWorkflow:
 
     def _build_graph(self):
         graph = StateGraph(State)
+        graph.add_node("check_autocoder_dir", check_autocoder_dir)
+
         graph.add_node("interpret_task", self._interpret_task)
         graph.add_node("build_context", self._build_context)
         graph.add_node("generate_modifications", self._generate_modifications)
         graph.add_node("apply_modifications", self._apply_modifications)
         graph.add_node("run_tests", self._run_tests)
 
-        graph.add_edge(START, "interpret_task")
+        # Start with the new node
+        graph.add_edge(START, "check_autocoder_dir")
+
+        # Add conditional edge based on autocoder_dir_exists
+        graph.add_conditional_edges(
+            "check_autocoder_dir",
+            self._check_initialization,
+            {True: "interpret_task", False: END}
+        )
+
         graph.add_edge("interpret_task", "build_context")
         graph.add_edge("build_context", "generate_modifications")
         graph.add_edge("generate_modifications", "apply_modifications")
@@ -760,10 +743,13 @@ class LangGraphWorkflow:
         graph.add_conditional_edges(
             "run_tests",
             self._handle_test_results,
-            {True: "__end__", False: "generate_modifications"}
+            {True: END, False: "generate_modifications"}
         )
 
         return graph.compile(checkpointer=self.memory)
+
+    def _check_initialization(self, state):
+        return state["autocoder_dir_exists"]
 
     def _interpret_task(self, state: State):
         interpreted_task = self.task_interpreter.interpret_task(state["messages"][-1].content)
@@ -808,7 +794,10 @@ class LangGraphWorkflow:
 
     def execute(self, task_description, config=None):
         try:
-            initial_state = {"messages": [("user", task_description)]}
+            initial_state = {
+                "messages": [("user", task_description)],
+                "autocoder_dir_exists": False  # Initialize this in the state
+            }
             for event in self.graph.stream(initial_state, config):
                 if "messages" in event:
                     print(event["messages"][-1])
@@ -817,102 +806,6 @@ class LangGraphWorkflow:
             error_report = self.error_handler.handle_error(e)
             self.error_handler.log_error(e)
             return error_report
-
-
-
-
-
-
-
-#File ./src/autocoder/manifest_processor.py:
-import os
-import glob
-import fnmatch
-
-class ManifestProcessor:
-    def __init__(self, project_root):
-        self.project_root = project_root
-        self.exclude_patterns = [
-            '.venv', '__pycache__', '*.pyc', '*.pyo', '*.pyd',
-            '.git', '.idea', '.vscode', '*.egg-info',
-            'build', 'dist', '.tox', '.pytest_cache'
-        ]
-
-    def is_excluded(self, path):
-        abs_path = os.path.abspath(path)
-        path_parts = abs_path.split(os.sep)
-        for i in range(len(path_parts)):
-            current_path = os.sep.join(path_parts[:i+1])
-            if any(fnmatch.fnmatch(os.path.basename(current_path), pattern) for pattern in self.exclude_patterns):
-                return True
-        return False
-
-    def process_manifest(self, manifest_file='MANIFEST.in'):
-        manifest_path = os.path.join(self.project_root, manifest_file)
-        if not os.path.exists(manifest_path):
-            print(f"Error: {manifest_file} not found in the project root directory.")
-            return []
-
-        included_files = set()
-        excluded_files = set()
-
-        with open(manifest_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                parts = line.split()
-                command = parts[0].lower()
-                patterns = parts[1:]
-
-                if command in ('include', 'recursive-include'):
-                    self._handle_include(command, patterns, included_files)
-                elif command in ('exclude', 'recursive-exclude'):
-                    self._handle_exclude(command, patterns, excluded_files)
-                elif command == 'global-include':
-                    self._handle_global_include(patterns, included_files)
-                elif command == 'global-exclude':
-                    self._handle_global_exclude(patterns, excluded_files)
-
-        final_files = sorted(included_files - excluded_files)
-        return final_files
-
-    def _handle_include(self, command, patterns, included_files):
-        for pattern in patterns:
-            if command == 'include':
-                included_files.update(f for f in glob.glob(os.path.join(self.project_root, pattern)) if not self.is_excluded(f))
-            else:  # recursive-include
-                for root, _, filenames in os.walk(self.project_root):
-                    if not self.is_excluded(root):
-                        for filename in fnmatch.filter(filenames, pattern):
-                            path = os.path.join(root, filename)
-                            if not self.is_excluded(path):
-                                included_files.add(path)
-
-    def _handle_exclude(self, command, patterns, excluded_files):
-        for pattern in patterns:
-            if command == 'exclude':
-                excluded_files.update(glob.glob(os.path.join(self.project_root, pattern)))
-            else:  # recursive-exclude
-                for root, _, filenames in os.walk(self.project_root):
-                    for filename in fnmatch.filter(filenames, pattern):
-                        excluded_files.add(os.path.join(root, filename))
-
-    def _handle_global_include(self, patterns, included_files):
-        for pattern in patterns:
-            for root, _, filenames in os.walk(self.project_root):
-                if not self.is_excluded(root):
-                    included_files.update(
-                        os.path.join(root, f) for f in fnmatch.filter(filenames, pattern)
-                        if not self.is_excluded(os.path.join(root, f))
-                    )
-
-    def _handle_global_exclude(self, patterns, excluded_files):
-        for pattern in patterns:
-            for root, _, filenames in os.walk(self.project_root):
-                excluded_files.update(
-                    os.path.join(root, f) for f in fnmatch.filter(filenames, pattern)
-                )
 
 
 

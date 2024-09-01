@@ -10,12 +10,10 @@
 ./src/autocoder/__init__.py
 ./src/autocoder/autocoder.py
 ./src/autocoder/claude_api_wrapper.py
-./src/autocoder/config.py
 ./src/autocoder/context_builder.py
 ./src/autocoder/error_handler.py
 ./src/autocoder/file_manager.py
 ./src/autocoder/langgraph_workflow.py
-./src/autocoder/manifest_processor.py
 ./src/autocoder/task_interpreter.py
 ./src/autocoder/test_runner.py
 ./src/autocoder/state.py

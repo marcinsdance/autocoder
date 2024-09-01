@@ -1,6 +1,6 @@
 import logging
 from typing import Annotated, TypedDict
-from langgraph.graph import StateGraph, START
+from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
@@ -25,14 +25,23 @@ class LangGraphWorkflow:
     def _build_graph(self):
         graph = StateGraph(State)
         graph.add_node("check_autocoder_dir", check_autocoder_dir)
+
         graph.add_node("interpret_task", self._interpret_task)
         graph.add_node("build_context", self._build_context)
         graph.add_node("generate_modifications", self._generate_modifications)
         graph.add_node("apply_modifications", self._apply_modifications)
         graph.add_node("run_tests", self._run_tests)
 
+        # Start with the new node
         graph.add_edge(START, "check_autocoder_dir")
-        graph.add_edge("check_autocoder_dir", "interpret_task")
+
+        # Add conditional edge based on autocoder_dir_exists
+        graph.add_conditional_edges(
+            "check_autocoder_dir",
+            self._check_initialization,
+            {True: "interpret_task", False: END}
+        )
+
         graph.add_edge("interpret_task", "build_context")
         graph.add_edge("build_context", "generate_modifications")
         graph.add_edge("generate_modifications", "apply_modifications")
@@ -40,10 +49,13 @@ class LangGraphWorkflow:
         graph.add_conditional_edges(
             "run_tests",
             self._handle_test_results,
-            {True: "__end__", False: "generate_modifications"}
+            {True: END, False: "generate_modifications"}
         )
 
         return graph.compile(checkpointer=self.memory)
+
+    def _check_initialization(self, state):
+        return state["autocoder_dir_exists"]
 
     def _interpret_task(self, state: State):
         interpreted_task = self.task_interpreter.interpret_task(state["messages"][-1].content)
