@@ -1,21 +1,23 @@
 from anthropic import Anthropic
 
-
 class ClaudeAPIWrapper:
     def __init__(self, api_key):
         self.client = Anthropic(api_key=api_key)
+        self.model = "claude-3-opus-20240229"  # Using the latest Claude 3 model
 
     def generate_response(self, prompt):
-        # Format the prompt to match Claude's expected input format
-        formatted_prompt = f"\n\nHuman: {prompt}\n\nAssistant:"
-
-        response = self.client.completions.create(
-            model="claude-3-opus-20240229",
-            prompt=formatted_prompt,
-            max_tokens_to_sample=1000
-        )
-        return response.completion
+        try:
+            message = self.client.messages.create(
+                model=self.model,
+                max_tokens=1000,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return message.content[0].text
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
+            return None
 
     def format_prompt(self, system_prompt, user_prompt):
-        # This method can be used for more complex prompt formatting if needed
-        return f"{system_prompt}\n\nHuman: {user_prompt}\n\nAssistant:"
+        return f"{system_prompt}\n\n{user_prompt}"

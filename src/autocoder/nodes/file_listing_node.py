@@ -74,6 +74,10 @@ class FileListingNode:
         prompt = self.claude_api.format_prompt(system_prompt, user_prompt)
         response = self.claude_api.generate_response(prompt)
 
+        if response is None:
+            logger.error("Failed to generate response from Claude API")
+            return {"project_directories": [], "excluded_directories": []}
+
         # Parse the response
         project_dirs = []
         excluded_dirs = []
@@ -141,6 +145,10 @@ class FileListingNode:
 
         prompt = self.claude_api.format_prompt(system_prompt, user_prompt)
         response = self.claude_api.generate_response(prompt)
+
+        if response is None:
+            logger.error("Failed to generate response from Claude API")
+            return current_lists
 
         # Parse the response
         project_dirs = []
