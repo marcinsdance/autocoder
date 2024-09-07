@@ -4,6 +4,7 @@ from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
+
 class FileListingNode:
     def __init__(self, project_root: str, claude_api):
         self.project_root = project_root
@@ -12,15 +13,16 @@ class FileListingNode:
 
     def process(self, state: Dict) -> Dict:
         logger.info("Starting file listing process")
-        
-        all_files = self.list_all_files()
-        generated_lists = self.generate_lists_with_llm(all_files)
-        
+
+        directories = self.list_directories()
+        generated_lists = self.generate_lists_with_llm(directories)
+
         approved_lists = self.get_user_approval(generated_lists)
-        
+
         if approved_lists:
-            self.save_file_lists(approved_lists['project_files'], approved_lists['excluded_files'])
-            state['project_files'] = approved_lists['project_files']
+            expanded_files = self.expand_directories(approved_lists['project_files'])
+            self.save_file_lists(expanded_files, approved_lists['excluded_files'])
+            state['project_files'] = expanded_files
             state['excluded_files'] = approved_lists['excluded_files']
             logger.info("File listing process completed successfully")
         else:
@@ -29,81 +31,89 @@ class FileListingNode:
 
         return state
 
-    def list_all_files(self) -> List[str]:
-        all_files = []
-        for root, _, files in os.walk(self.project_root):
-            for file in files:
-                all_files.append(os.path.relpath(os.path.join(root, file), self.project_root))
-        return all_files
+    def list_directories(self) -> List[str]:
+        directories = []
+        for root, dirs, _ in os.walk(self.project_root):
+            for dir in dirs:
+                rel_path = os.path.relpath(os.path.join(root, dir), self.project_root)
+                directories.append(rel_path)
+        return directories
 
-    def generate_lists_with_llm(self, all_files: List[str]) -> Dict[str, List[str]]:
+    def expand_directories(self, approved_directories: List[str]) -> List[str]:
+        expanded_files = []
+        for directory in approved_directories:
+            for root, _, files in os.walk(os.path.join(self.project_root, directory)):
+                for file in files:
+                    rel_path = os.path.relpath(os.path.join(root, file), self.project_root)
+                    expanded_files.append(rel_path)
+        return expanded_files
+
+    def generate_lists_with_llm(self, directories: List[str]) -> Dict[str, List[str]]:
         prompt = f"""
-        You are an expert in software development and project organization. Given the following list of files in a project directory, categorize them into two lists:
-        1. Project Files: Files that are part of the project's source code, configuration, or documentation.
-        2. Excluded Files: Files that should be excluded from the project context, such as build artifacts, cache files, third-party dependencies, or automatically generated files.
+        You are an expert in software development and project organization. Given the following list of directories in a project, categorize them into two lists:
+        1. Project Directories: Directories that are likely to contain source code, configuration, or documentation.
+        2. Excluded Directories: Directories that should be excluded from the project context, such as build artifacts, cache directories, or third-party dependencies.
 
-        Here's the list of all files in the project directory:
+        Here's the list of all directories in the project:
 
-        {', '.join(all_files)}
+        {', '.join(directories)}
 
         Consider the following when making your categorization:
         - Common development patterns and best practices
-        - Files that are typically version controlled vs. those that are not
-        - Configuration files that are important for the project
-        - Automatically generated files or build artifacts
-        - Backup files or temporary files
-        - Dependencies or third-party libraries
+        - Directories that typically contain source code or important project files
+        - Directories that usually contain build artifacts or generated files
+        - Directories for dependencies or third-party libraries
 
         Provide your response in the following format:
 
-        Project Files:
-        - [List of project files, one per line]
+        Project Directories:
+        - [List of project directories, one per line]
 
-        Excluded Files:
-        - [List of excluded files, one per line]
+        Excluded Directories:
+        - [List of excluded directories, one per line]
 
-        Be sure to categorize ALL files from the provided list.
+        Be sure to categorize ALL directories from the provided list.
         """
 
         response = self.claude_api.generate_response(prompt)
-        
+
         # Parse the response
-        project_files = []
-        excluded_files = []
+        project_dirs = []
+        excluded_dirs = []
         current_list = None
-        
+
         for line in response.split('\n'):
             line = line.strip()
-            if line == "Project Files:":
-                current_list = project_files
-            elif line == "Excluded Files:":
-                current_list = excluded_files
+            if line == "Project Directories:":
+                current_list = project_dirs
+            elif line == "Excluded Directories:":
+                current_list = excluded_dirs
             elif line.startswith("- ") and current_list is not None:
                 current_list.append(line[2:])
 
         return {
-            "project_files": project_files,
-            "excluded_files": excluded_files
+            "project_files": project_dirs,
+            "excluded_files": excluded_dirs
         }
 
-    def get_user_approval(self, file_lists: Dict[str, List[str]]) -> Dict[str, List[str]] | None:
+    def get_user_approval(self, dir_lists: Dict[str, List[str]]) -> Dict[str, List[str]] | None:
         while True:
-            print("\nProject Files:")
-            for file in file_lists['project_files']:
-                print(f"  {file}")
+            print("\nProject Directories:")
+            for dir in dir_lists['project_files']:
+                print(f"  {dir}")
 
-            print("\nExcluded Files:")
-            for file in file_lists['excluded_files']:
-                print(f"  {file}")
+            print("\nExcluded Directories:")
+            for dir in dir_lists['excluded_files']:
+                print(f"  {dir}")
 
-            approval = input("\nDo you approve these file lists? (yes/no/quit): ").lower()
+            approval = input("\nDo you approve these directory lists? (yes/no/quit): ").lower()
 
             if approval == 'yes':
-                return file_lists
+                return dir_lists
             elif approval == 'no':
                 print("Please describe the changes you want to make:")
                 changes = input("Your changes: ")
-                file_lists = self.update_lists_with_llm(file_lists, changes)
+                dir_lists = self.update_lists_with_llm(dir_lists, changes)
             elif approval == 'quit':
                 print("Process aborted by user.")
                 return None
@@ -112,45 +122,45 @@ class FileListingNode:
 
     def update_lists_with_llm(self, current_lists: Dict[str, List[str]], user_changes: str) -> Dict[str, List[str]]:
         prompt = f"""
-        Current file categorization:
+        Current directory categorization:
 
-        Project Files:
+        Project Directories:
         {', '.join(current_lists['project_files'])}
 
-        Excluded Files:
+        Excluded Directories:
         {', '.join(current_lists['excluded_files'])}
 
         User requested changes:
         {user_changes}
 
-        Please update the file lists based on the user's request. Provide your response in the following format:
+        Please update the directory lists based on the user's request. Provide your response in the following format:
 
-        Project Files:
-        - [Updated list of project files, one per line]
+        Project Directories:
+        - [Updated list of project directories, one per line]
 
-        Excluded Files:
-        - [Updated list of excluded files, one per line]
+        Excluded Directories:
+        - [Updated list of excluded directories, one per line]
         """
 
         response = self.claude_api.generate_response(prompt)
-        
+
         # Parse the response
-        project_files = []
-        excluded_files = []
+        project_dirs = []
+        excluded_dirs = []
         current_list = None
-        
+
         for line in response.split('\n'):
             line = line.strip()
-            if line == "Project Files:":
-                current_list = project_files
-            elif line == "Excluded Files:":
-                current_list = excluded_files
+            if line == "Project Directories:":
+                current_list = project_dirs
+            elif line == "Excluded Directories:":
+                current_list = excluded_dirs
             elif line.startswith("- ") and current_list is not None:
                 current_list.append(line[2:])
 
         return {
-            "project_files": project_files,
-            "excluded_files": excluded_files
+            "project_files": project_dirs,
+            "excluded_files": excluded_dirs
         }
 
     def save_file_lists(self, project_files: List[str], excluded_files: List[str]):
@@ -166,6 +176,7 @@ class FileListingNode:
     def _update_state_with_error(self, state: Dict, error_message: str) -> Dict:
         state['error'] = error_message
         return state
+
 
 def file_listing_node(state: Dict) -> Dict:
     logger.info("Executing file_listing_node")

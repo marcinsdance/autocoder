@@ -40,9 +40,13 @@ def initialize_file_listing():
 
     # Load environment variables
     load_dotenv()
+    print("Environment variables:", os.environ)
+    print("ANTHROPIC_API_KEY:", os.getenv('ANTHROPIC_API_KEY'))
+    print("CLAUDE_API_KEY:", os.getenv('CLAUDE_API_KEY'))
+    print("OPENAI_API_KEY:", os.getenv('OPENAI_API_KEY'))
+    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY') or os.getenv('OPENAI_API_KEY')
+    print("Selected API key:", api_key)
 
-    # Get API key directly from environment
-    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
     if not api_key:
         logger.error("No API key found. Cannot proceed with file listing.")
         return {
@@ -79,9 +83,10 @@ def execute_task(task_description):
 
     # Load environment variables
     load_dotenv()
+    print("Environment variables:", os.environ)
 
     # Get API key directly from environment
-    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
+    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY') or os.getenv('OPENAI_API_KEY')
     if not api_key:
         logger.error("No API key found. Cannot proceed with task execution.")
         print(
