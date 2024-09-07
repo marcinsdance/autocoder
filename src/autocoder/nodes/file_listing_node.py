@@ -4,7 +4,6 @@ from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
-
 class FileListingNode:
     def __init__(self, project_root: str, claude_api):
         self.project_root = project_root
@@ -46,8 +45,9 @@ class FileListingNode:
         return sorted(set(expanded_dirs))  # Remove duplicates and sort
 
     def generate_lists_with_llm(self, directories: List[str]) -> Dict[str, List[str]]:
-        prompt = f"""
-        You are an expert in software development and project organization. Given the following list of root-level directories in a project, categorize them into two lists:
+        system_prompt = """You are an expert in software development and project organization. Your task is to categorize directories in a project."""
+
+        user_prompt = f"""Given the following list of root-level directories in a project, categorize them into two lists:
         1. Project Directories: Directories that are likely to contain source code, configuration, or documentation.
         2. Excluded Directories: Directories that should be excluded from the project context, such as build artifacts, cache directories, or third-party dependencies.
 
@@ -69,9 +69,9 @@ class FileListingNode:
         Excluded Directories:
         - [List of excluded directories, one per line]
 
-        Be sure to categorize ALL directories from the provided list.
-        """
+        Be sure to categorize ALL directories from the provided list."""
 
+        prompt = self.claude_api.format_prompt(system_prompt, user_prompt)
         response = self.claude_api.generate_response(prompt)
 
         # Parse the response
@@ -118,8 +118,9 @@ class FileListingNode:
                 print("Invalid input. Please enter 'yes', 'no', or 'quit'.")
 
     def update_lists_with_llm(self, current_lists: Dict[str, List[str]], user_changes: str) -> Dict[str, List[str]]:
-        prompt = f"""
-        Current root directory categorization:
+        system_prompt = """You are an expert in software development and project organization. Your task is to update the categorization of directories based on user feedback."""
+
+        user_prompt = f"""Current root directory categorization:
 
         Project Directories:
         {', '.join(current_lists['project_directories'])}
@@ -136,9 +137,9 @@ class FileListingNode:
         - [Updated list of project directories, one per line]
 
         Excluded Directories:
-        - [Updated list of excluded directories, one per line]
-        """
+        - [Updated list of excluded directories, one per line]"""
 
+        prompt = self.claude_api.format_prompt(system_prompt, user_prompt)
         response = self.claude_api.generate_response(prompt)
 
         # Parse the response
