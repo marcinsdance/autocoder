@@ -1,10 +1,10 @@
 import os
 import fnmatch
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 
 class FileListingNode:
-    def __init__(self, project_root: str, claude_api):
+    def __init__(self, project_root: str, claude_api: Optional[object] = None):
         self.project_root = project_root
         self.claude_api = claude_api
         self.default_exclusions = [
@@ -22,7 +22,11 @@ class FileListingNode:
         project_files = self.list_project_files()
         excluded_files = self.read_excluded_files()
 
-        refined_lists = self.refine_with_llm(project_files, excluded_files)
+        if self.claude_api:
+            refined_lists = self.refine_with_llm(project_files, excluded_files)
+        else:
+            refined_lists = {"project_files": project_files, "excluded_files": excluded_files}
+
         approved_lists = self.get_user_approval(refined_lists)
 
         self.save_file_lists(approved_lists['project_files'], approved_lists['excluded_files'])

@@ -13,19 +13,25 @@ from .test_runner import TestRunner
 from .error_handler import ErrorHandler
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
-from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder, display_usage_message
+from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder, \
+    display_usage_message
+from .nodes.file_listing_node import FileListingNode
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def main():
     parser = argparse.ArgumentParser(description="Claude Automated Coding")
-    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "help"], help="Command to execute")
-    parser.add_argument("task_description", nargs='?', default="", help="The task description for the automated coding process")
+    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "help"],
+                        help="Command to execute")
+    parser.add_argument("task_description", nargs='?', default="",
+                        help="The task description for the automated coding process")
     args = parser.parse_args()
 
     if args.command == "init":
         init_autocoder()
+        initialize_file_listing()
         return
 
     if args.command == "help" or (args.command == "task" and not args.task_description):
@@ -74,5 +80,25 @@ def main():
         if file_manager.is_debug_mode():
             file_manager.create_debug_context()
 
-    if __name__ == "__main__":
-        main()
+
+def initialize_file_listing():
+    project_root = os.getcwd()
+
+    # Load environment variables
+    load_dotenv()
+
+    # Get API key directly from environment
+    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
+    if not api_key:
+        raise ValueError(
+            "Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .env file")
+
+    claude_api = ClaudeAPIWrapper(api_key)
+    file_lister = FileListingNode(project_root, claude_api)
+
+    state = {"project_root": project_root, "claude_api": claude_api}
+    file_lister.process(state)
+
+
+if __name__ == "__main__":
+    main()
