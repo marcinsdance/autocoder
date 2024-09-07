@@ -3,12 +3,7 @@ class ContextBuilder:
         self.context = {}
 
     def build_context(self, file_manager):
-        file_contents = file_manager.get_file_contents()
-        context = "Project Files:\n\n"
-        for filename, content in file_contents.items():
-            context += f"File: {filename}\n"
-            context += "Content:\n"
-            context += content[:500] + "...\n\n" if len(content) > 500 else content + "\n\n"
+        context = file_manager.get_context()
         self.context['built_context'] = context
         return context
 

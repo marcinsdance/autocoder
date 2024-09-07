@@ -46,10 +46,12 @@ def main():
         # Get API key directly from environment
         api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
         if not api_key:
-            raise ValueError("Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .env file")
+            raise ValueError(
+                "Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .env file")
 
         # Initialize components
-        file_manager = FileManager()
+        project_root = os.getcwd()
+        file_manager = FileManager(project_root)
         context_builder = ContextBuilder()
         task_interpreter = TaskInterpreter()
         code_modifier = CodeModifier()
@@ -68,5 +70,9 @@ def main():
 
         print(result)
 
-if __name__ == "__main__":
-    main()
+        # Create debug context if DEBUG mode is enabled
+        if file_manager.is_debug_mode():
+            file_manager.create_debug_context()
+
+    if __name__ == "__main__":
+        main()
