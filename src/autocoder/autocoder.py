@@ -17,35 +17,46 @@ from .nodes.tools.directory_checker import check_autocoder_dir, display_init_mes
     display_usage_message
 from .nodes.file_listing_node import FileListingNode
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
 def initialize_autocoder():
-    print("Initializing Autocoder...")
+    logger.info("Starting Autocoder initialization...")
     init_autocoder()
+    logger.info("Autocoder directory initialized. Now initializing file listing...")
     initialize_file_listing()
-    print("Autocoder initialization complete.")
+    logger.info("Autocoder initialization complete.")
 
 
 def initialize_file_listing():
     project_root = os.getcwd()
+    logger.debug(f"Current working directory: {project_root}")
 
     # Load environment variables
     load_dotenv()
 
     # Get API key directly from environment
     api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
-    claude_api = ClaudeAPIWrapper(api_key) if api_key else None
+    if api_key:
+        logger.debug("API key found in environment variables.")
+        claude_api = ClaudeAPIWrapper(api_key)
+    else:
+        logger.warning("No API key found. Proceeding without Claude API.")
+        claude_api = None
 
+    logger.info("Creating FileListingNode...")
     file_lister = FileListingNode(project_root, claude_api)
 
     state = {"project_root": project_root, "claude_api": claude_api}
+    logger.info("Processing file listing...")
     file_lister.process(state)
+    logger.info("File listing process completed.")
 
 
 def execute_task(task_description):
     if not check_autocoder_dir():
+        logger.error("Autocoder is not initialized in this directory.")
         print("Autocoder is not initialized in this directory. Please run 'autocoder init' first.")
         return
 
@@ -86,29 +97,34 @@ def execute_task(task_description):
 
 def main():
     parser = argparse.ArgumentParser(description="Claude Automated Coding")
-    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "help"],
-                        help="Command to execute")
-    parser.add_argument("task_description", nargs='?', default="",
-                        help="The task description for the automated coding process")
+    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "help"], help="Command to execute")
+    parser.add_argument("task_description", nargs='?', default="", help="The task description for the automated coding process")
     args = parser.parse_args()
 
+    logger.debug(f"Received command: {args.command}")
+
     if args.command == "init":
+        logger.info("Initializing Autocoder...")
         initialize_autocoder()
     elif args.command == "task":
         if args.task_description:
+            logger.info(f"Executing task: {args.task_description}")
             execute_task(args.task_description)
         else:
+            logger.error("No task description provided for 'task' command.")
             print("Error: Task description is required for the 'task' command.")
             display_usage_message()
     elif args.command == "help" or not args.command:
         if check_autocoder_dir():
+            logger.info("Displaying usage message for initialized directory.")
             display_usage_message()
         else:
+            logger.info("Displaying initialization message for uninitialized directory.")
             display_init_message()
     else:
+        logger.error(f"Unknown command: {args.command}")
         print(f"Unknown command: {args.command}")
         display_usage_message()
-
 
 if __name__ == "__main__":
     main()

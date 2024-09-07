@@ -1,6 +1,9 @@
 import os
 import fnmatch
+import logging
 from typing import List, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class FileListingNode:
@@ -12,19 +15,25 @@ class FileListingNode:
             '.venv', 'node_modules', 'vendor', '*.log', '*.db',
             '*.sqlite', '*.sqlite3', '*.egg-info', 'build', 'dist'
         ]
+        logger.debug(f"FileListingNode initialized with project_root: {project_root}")
 
     def process(self, state: Dict) -> Dict:
+        logger.info("Starting file listing process")
         if not self.files_exist():
+            logger.info("Project files or excluded files don't exist. Prompting user for generation.")
             user_choice = self.prompt_user_for_generation()
             if user_choice.lower() != 'y':
+                logger.info("User chose not to generate files. Exiting process.")
                 return state  # Exit if user doesn't want to generate files
 
         project_files = self.list_project_files()
         excluded_files = self.read_excluded_files()
 
         if self.claude_api:
+            logger.info("Refining file lists with Claude API")
             refined_lists = self.refine_with_llm(project_files, excluded_files)
         else:
+            logger.info("Claude API not available. Skipping refinement.")
             refined_lists = {"project_files": project_files, "excluded_files": excluded_files}
 
         approved_lists = self.get_user_approval(refined_lists)
@@ -33,17 +42,22 @@ class FileListingNode:
 
         state['project_files'] = approved_lists['project_files']
         state['excluded_files'] = approved_lists['excluded_files']
+        logger.info("File listing process completed")
         return state
 
     def files_exist(self) -> bool:
         autocoder_dir = os.path.join(self.project_root, '.autocoder')
         project_files_path = os.path.join(autocoder_dir, 'project_files')
         excluded_files_path = os.path.join(autocoder_dir, 'excluded_files')
-        return os.path.exists(project_files_path) and os.path.exists(excluded_files_path)
+        exists = os.path.exists(project_files_path) and os.path.exists(excluded_files_path)
+        logger.debug(f"Checking if files exist: {exists}")
+        return exists
 
     def prompt_user_for_generation(self) -> str:
         print("The 'project_files' and 'excluded_files' lists don't exist.")
-        return input("Do you want to generate them now? (y/n): ")
+        user_input = input("Do you want to generate them now? (y/n): ")
+        logger.debug(f"User input for file generation: {user_input}")
+        return user_input
 
     def list_project_files(self) -> List[str]:
         project_files = []
@@ -141,7 +155,7 @@ class FileListingNode:
                 print("Invalid input. Please enter 'yes' or 'no'.")
 
 
-# This function will be used as the actual node in the graph
 def file_listing_node(state: Dict) -> Dict:
-    file_lister = FileListingNode(state['project_root'], state['claude_api'])
+    logger.info("Executing file_listing_node")
+    file_lister = FileListingNode(state['project_root'], state.get('claude_api'))
     return file_lister.process(state)
