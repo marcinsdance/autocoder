@@ -42,16 +42,19 @@ def initialize_file_listing():
         logger.debug("API key found in environment variables.")
         claude_api = ClaudeAPIWrapper(api_key)
     else:
-        logger.warning("No API key found. Proceeding without Claude API.")
-        claude_api = None
+        logger.warning("No API key found. Cannot proceed with file listing.")
+        return
 
     logger.info("Creating FileListingNode...")
     file_lister = FileListingNode(project_root, claude_api)
 
     state = {"project_root": project_root, "claude_api": claude_api}
     logger.info("Processing file listing...")
-    file_lister.process(state)
+    updated_state = file_lister.process(state)
     logger.info("File listing process completed.")
+
+    # You might want to do something with the updated state here,
+    # such as saving it or using it to initialize other components
 
 
 def execute_task(task_description):
@@ -97,8 +100,10 @@ def execute_task(task_description):
 
 def main():
     parser = argparse.ArgumentParser(description="Claude Automated Coding")
-    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "help"], help="Command to execute")
-    parser.add_argument("task_description", nargs='?', default="", help="The task description for the automated coding process")
+    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "help"],
+                        help="Command to execute")
+    parser.add_argument("task_description", nargs='?', default="",
+                        help="The task description for the automated coding process")
     args = parser.parse_args()
 
     logger.debug(f"Received command: {args.command}")
@@ -125,6 +130,7 @@ def main():
         logger.error(f"Unknown command: {args.command}")
         print(f"Unknown command: {args.command}")
         display_usage_message()
+
 
 if __name__ == "__main__":
     main()
