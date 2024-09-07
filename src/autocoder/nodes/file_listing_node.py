@@ -14,6 +14,11 @@ class FileListingNode:
         ]
 
     def process(self, state: Dict) -> Dict:
+        if not self.files_exist():
+            user_choice = self.prompt_user_for_generation()
+            if user_choice.lower() != 'y':
+                return state  # Exit if user doesn't want to generate files
+
         project_files = self.list_project_files()
         excluded_files = self.read_excluded_files()
 
@@ -22,10 +27,19 @@ class FileListingNode:
 
         self.save_file_lists(approved_lists['project_files'], approved_lists['excluded_files'])
 
-        # Update the state with the new file lists
         state['project_files'] = approved_lists['project_files']
         state['excluded_files'] = approved_lists['excluded_files']
         return state
+
+    def files_exist(self) -> bool:
+        autocoder_dir = os.path.join(self.project_root, '.autocoder')
+        project_files_path = os.path.join(autocoder_dir, 'project_files')
+        excluded_files_path = os.path.join(autocoder_dir, 'excluded_files')
+        return os.path.exists(project_files_path) and os.path.exists(excluded_files_path)
+
+    def prompt_user_for_generation(self) -> str:
+        print("The 'project_files' and 'excluded_files' lists don't exist.")
+        return input("Do you want to generate them now? (y/n): ")
 
     def list_project_files(self) -> List[str]:
         project_files = []
@@ -122,6 +136,8 @@ class FileListingNode:
             else:
                 print("Invalid input. Please enter 'yes' or 'no'.")
 
+
+# This function will be used as the actual node in the graph
 def file_listing_node(state: Dict) -> Dict:
     file_lister = FileListingNode(state['project_root'], state['claude_api'])
     return file_lister.process(state)

@@ -101,6 +101,8 @@ class LangGraphWorkflow:
         try:
             initial_state = {
                 "messages": [("user", task_description)],
+                "project_root": self.file_manager.project_root,
+                "claude_api": self.claude_api,
                 "autocoder_dir_exists": False  # Initialize this in the state
             }
             for event in self.graph.stream(initial_state, config):
