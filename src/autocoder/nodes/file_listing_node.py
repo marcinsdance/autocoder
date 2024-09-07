@@ -29,10 +29,7 @@ class FileListingNode:
         approved_lists = self.get_user_approval(generated_lists)
 
         if approved_lists:
-            expanded_items = self.expand_approved_items(approved_lists['project_items'])
-            filtered_expanded_items = self.filter_common_excludes([(item, 'unknown') for item in expanded_items])
-
-            project_items = [item for item, _ in filtered_expanded_items]
+            project_items = self.expand_approved_items(approved_lists['project_items'])
             excluded_items = set(approved_lists['excluded_items']) | self.auto_excluded_items
 
             self.save_item_lists(project_items, list(excluded_items))
@@ -56,11 +53,14 @@ class FileListingNode:
     def filter_common_excludes(self, items: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
         filtered_items = []
         for item, item_type in items:
-            if not any(self.match_pattern(item, pattern) for pattern in self.common_excludes):
+            if not self.should_exclude(item):
                 filtered_items.append((item, item_type))
             else:
                 self.auto_excluded_items.add(item)
         return filtered_items
+
+    def should_exclude(self, item: str) -> bool:
+        return any(self.match_pattern(item, pattern) for pattern in self.common_excludes)
 
     def match_pattern(self, item: str, pattern: str) -> bool:
         if pattern.startswith('*'):
@@ -74,21 +74,17 @@ class FileListingNode:
             if os.path.isdir(full_path):
                 for root, dirs, files in os.walk(full_path):
                     rel_root = os.path.relpath(root, self.project_root)
-                    # Filter out common excludes from dirs to prevent walking into them
-                    dirs[:] = [d for d in dirs if not self.should_exclude(os.path.join(rel_root, d))]
+                    dirs[:] = [d for d in dirs if not self.should_exclude(d)]
                     for file in files:
-                        rel_path = os.path.join(rel_root, file)
-                        if not self.should_exclude(rel_path):
+                        if not self.should_exclude(file):
+                            rel_path = os.path.join(rel_root, file)
                             expanded_items.append(rel_path)
                         else:
-                            self.auto_excluded_items.add(rel_path)
+                            self.auto_excluded_items.add(os.path.join(rel_root, file))
                 expanded_items.append(item)  # Include the directory itself
             else:
                 expanded_items.append(item)  # It's a file, just add it
         return sorted(set(expanded_items))  # Remove duplicates and sort
-
-    def should_exclude(self, item: str) -> bool:
-        return any(self.match_pattern(os.path.basename(item), pattern) for pattern in self.common_excludes)
 
     def generate_lists_with_llm(self, root_items: List[Tuple[str, str]]) -> Dict[str, List[str]]:
         system_prompt = """You are an expert in software development and project organization. Your task is to categorize files and directories in a project."""
