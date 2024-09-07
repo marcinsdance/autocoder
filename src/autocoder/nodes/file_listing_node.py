@@ -10,19 +10,28 @@ class FileListingNode:
         self.project_root = project_root
         self.claude_api = claude_api
         logger.debug(f"FileListingNode initialized with project_root: {project_root}")
+        self.common_excludes = {
+            '__pycache__', '*.pyc', '*.pyo', '*.pyd',
+            '.git', '.idea', '.vscode', '*.egg-info',
+            'build', 'dist', '.tox', '.pytest_cache',
+            '*.log', '*.sqlite3', '*.db', '*.swp',
+            '.DS_Store', 'Thumbs.db'
+        }
 
     def process(self, state: Dict) -> Dict:
         logger.info("Starting file listing process")
 
         root_items = self.list_root_items()
-        generated_lists = self.generate_lists_with_llm(root_items)
+        filtered_items = self.filter_common_excludes(root_items)
+        generated_lists = self.generate_lists_with_llm(filtered_items)
 
         approved_lists = self.get_user_approval(generated_lists)
 
         if approved_lists:
             expanded_items = self.expand_approved_items(approved_lists['project_items'])
-            self.save_item_lists(expanded_items, approved_lists['excluded_items'])
-            state['project_items'] = expanded_items
+            filtered_expanded_items = self.filter_common_excludes([(item, 'unknown') for item in expanded_items])
+            self.save_item_lists([item for item, _ in filtered_expanded_items], approved_lists['excluded_items'])
+            state['project_items'] = [item for item, _ in filtered_expanded_items]
             state['excluded_items'] = approved_lists['excluded_items']
             logger.info("File and directory listing process completed successfully")
         else:
@@ -39,15 +48,31 @@ class FileListingNode:
             root_items.append((item, item_type))
         return root_items
 
+    def filter_common_excludes(self, items: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+        filtered_items = []
+        for item, item_type in items:
+            if not any(self.match_pattern(item, pattern) for pattern in self.common_excludes):
+                filtered_items.append((item, item_type))
+        return filtered_items
+
+    def match_pattern(self, item: str, pattern: str) -> bool:
+        if pattern.startswith('*'):
+            return item.endswith(pattern[1:])
+        return item == pattern
+
     def expand_approved_items(self, approved_items: List[str]) -> List[str]:
         expanded_items = []
         for item in approved_items:
             full_path = os.path.join(self.project_root, item)
             if os.path.isdir(full_path):
                 for root, dirs, files in os.walk(full_path):
+                    # Filter out common excludes from dirs to prevent walking into them
+                    dirs[:] = [d for d in dirs if
+                               not any(self.match_pattern(d, pattern) for pattern in self.common_excludes)]
                     for file in files:
-                        rel_path = os.path.relpath(os.path.join(root, file), self.project_root)
-                        expanded_items.append(rel_path)
+                        if not any(self.match_pattern(file, pattern) for pattern in self.common_excludes):
+                            rel_path = os.path.relpath(os.path.join(root, file), self.project_root)
+                            expanded_items.append(rel_path)
                 expanded_items.append(item)  # Include the directory itself
             else:
                 expanded_items.append(item)  # It's a file, just add it
