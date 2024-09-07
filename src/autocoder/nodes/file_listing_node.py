@@ -13,27 +13,21 @@ class FileListingNode:
         self.default_exclusions = [
             '.git', '__pycache__', '*.pyc', '*.pyo', '*.pyd',
             '.venv', 'node_modules', 'vendor', '*.log', '*.db',
-            '*.sqlite', '*.sqlite3', '*.egg-info', 'build', 'dist'
+            '*.sqlite', '*.sqlite3', '*.egg-info', 'build', 'dist',
+            '*.tfstate', '*.tfstate.*', '.terraform', '*.lock.hcl'
         ]
         logger.debug(f"FileListingNode initialized with project_root: {project_root}")
 
     def process(self, state: Dict) -> Dict:
         logger.info("Starting file listing process")
-        if not self.files_exist():
-            logger.info("Project files or excluded files don't exist. Generating file lists.")
-            if self.claude_api:
-                logger.info("Using Claude API for file list generation.")
-                all_files = self.list_all_files()
-                generated_lists = self.generate_lists_with_llm(all_files)
-            else:
-                logger.info("Claude API not available. Using manual file listing.")
-                generated_lists = self.manual_file_listing()
+        all_files = self.list_all_files()
+
+        if self.claude_api:
+            logger.info("Using Claude API for file list generation.")
+            generated_lists = self.generate_lists_with_llm(all_files)
         else:
-            logger.info("Reading existing file lists")
-            generated_lists = {
-                "project_files": self.read_file_list("project_files"),
-                "excluded_files": self.read_file_list("excluded_files")
-            }
+            logger.warning("Claude API not available. Falling back to default exclusions.")
+            generated_lists = self.categorize_files_with_defaults(all_files)
 
         approved_lists = self.get_user_approval(generated_lists)
         self.save_file_lists(approved_lists['project_files'], approved_lists['excluded_files'])
@@ -43,30 +37,30 @@ class FileListingNode:
         logger.info("File listing process completed")
         return state
 
-    def files_exist(self) -> bool:
-        autocoder_dir = os.path.join(self.project_root, '.autocoder')
-        project_files_path = os.path.join(autocoder_dir, 'project_files')
-        excluded_files_path = os.path.join(autocoder_dir, 'excluded_files')
-        exists = os.path.exists(project_files_path) and os.path.exists(excluded_files_path)
-        logger.debug(f"Checking if files exist: {exists}")
-        return exists
-
     def list_all_files(self) -> List[str]:
         all_files = []
-        for root, dirs, files in os.walk(self.project_root):
+        for root, _, files in os.walk(self.project_root):
             for file in files:
                 all_files.append(os.path.relpath(os.path.join(root, file), self.project_root))
         return all_files
 
     def generate_lists_with_llm(self, all_files: List[str]) -> Dict[str, List[str]]:
         prompt = f"""
-        Given the following list of all files in the project directory:
+        You are an expert in software development and project organization. Given the following list of files in a project directory, categorize them into two lists:
+        1. Project Files: Files that are part of the project's source code, configuration, or documentation.
+        2. Excluded Files: Files that should be excluded from the project context, such as build artifacts, cache files, third-party dependencies, or automatically generated files.
+
+        Here's the list of all files in the project directory:
 
         {', '.join(all_files)}
 
-        Please categorize these files into two lists:
-        1. Project Files: Files that are part of the project's source code, configuration, or documentation.
-        2. Excluded Files: Files that should be excluded from the project context, such as build artifacts, cache files, or third-party dependencies.
+        Consider the following when making your categorization:
+        - Common development patterns and best practices
+        - Files that are typically version controlled vs. those that are not
+        - Configuration files that are important for the project
+        - Automatically generated files or build artifacts
+        - Backup files or temporary files
+        - Dependencies or third-party libraries
 
         Provide your response in the following format:
 
@@ -76,7 +70,7 @@ class FileListingNode:
         Excluded Files:
         - [List of excluded files, one per line]
 
-        Consider common development patterns and best practices when making your categorization.
+        Be sure to categorize ALL files from the provided list.
         """
 
         response = self.claude_api.generate_response(prompt)
@@ -100,44 +94,20 @@ class FileListingNode:
             "excluded_files": excluded_files
         }
 
-    def read_file_list(self, list_name: str) -> List[str]:
-        file_path = os.path.join(self.project_root, '.autocoder', list_name)
-        with open(file_path, 'r') as f:
-            return [line.strip() for line in f if line.strip()]
-
-    def save_file_lists(self, project_files: List[str], excluded_files: List[str]):
-        autocoder_dir = os.path.join(self.project_root, '.autocoder')
-        os.makedirs(autocoder_dir, exist_ok=True)
-
-        with open(os.path.join(autocoder_dir, 'project_files'), 'w') as f:
-            f.write('\n'.join(project_files))
-
-        with open(os.path.join(autocoder_dir, 'excluded_files'), 'w') as f:
-            f.write('\n'.join(excluded_files))
-
-    def manual_file_listing(self) -> Dict[str, List[str]]:
-        all_files = self.list_all_files()
+    def categorize_files_with_defaults(self, all_files: List[str]) -> Dict[str, List[str]]:
         project_files = []
         excluded_files = []
 
-        print("Manual file listing process:")
-        print("For each file, enter 'p' to include it in project files, 'e' to exclude it, or 'q' to finish.")
-
         for file in all_files:
-            while True:
-                choice = input(f"{file} (p/e/q): ").lower()
-                if choice == 'p':
-                    project_files.append(file)
-                    break
-                elif choice == 'e':
-                    excluded_files.append(file)
-                    break
-                elif choice == 'q':
-                    return {"project_files": project_files, "excluded_files": excluded_files}
-                else:
-                    print("Invalid input. Please enter 'p', 'e', or 'q'.")
+            if any(fnmatch.fnmatch(file, pattern) for pattern in self.default_exclusions):
+                excluded_files.append(file)
+            else:
+                project_files.append(file)
 
-        return {"project_files": project_files, "excluded_files": excluded_files}
+        return {
+            "project_files": project_files,
+            "excluded_files": excluded_files
+        }
 
     def get_user_approval(self, file_lists: Dict[str, List[str]]) -> Dict[str, List[str]]:
         while True:
@@ -158,8 +128,7 @@ class FileListingNode:
                     print(
                         "Please provide your changes in natural language. Describe which files should be moved between lists.")
                     changes = input("Your changes: ")
-                    updated_lists = self.update_lists_with_llm(file_lists, changes)
-                    file_lists = updated_lists
+                    file_lists = self.update_lists_with_llm(file_lists, changes)
                 else:
                     print("Manual update mode:")
                     file_lists = self.manual_file_listing()
@@ -209,8 +178,36 @@ class FileListingNode:
             "excluded_files": excluded_files
         }
 
+    def manual_file_listing(self) -> Dict[str, List[str]]:
+        all_files = self.list_all_files()
+        project_files = []
+        excluded_files = []
 
-def file_listing_node(state: Dict) -> Dict:
-    logger.info("Executing file_listing_node")
-    file_lister = FileListingNode(state['project_root'], state.get('claude_api'))
-    return file_lister.process(state)
+        print("Manual file listing process:")
+        print("For each file, enter 'p' to include it in project files, 'e' to exclude it, or 'q' to finish.")
+
+        for file in all_files:
+            while True:
+                choice = input(f"{file} (p/e/q): ").lower()
+                if choice == 'p':
+                    project_files.append(file)
+                    break
+                elif choice == 'e':
+                    excluded_files.append(file)
+                    break
+                elif choice == 'q':
+                    return {"project_files": project_files, "excluded_files": excluded_files}
+                else:
+                    print("Invalid input. Please enter 'p', 'e', or 'q'.")
+
+        return {"project_files": project_files, "excluded_files": excluded_files}
+
+    def save_file_lists(self, project_files: List[str], excluded_files: List[str]):
+        autocoder_dir = os.path.join(self.project_root, '.autocoder')
+        os.makedirs(autocoder_dir, exist_ok=True)
+
+        with open(os.path.join(autocoder_dir, 'project_files'), 'w') as f:
+            f.write('\n'.join(project_files))
+
+        with open(os.path.join(autocoder_dir, 'excluded_files'), 'w') as f:
+            f.write('\n'.join(excluded_files))

@@ -6,7 +6,6 @@ from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
 from .state import State
 from .nodes.tools.directory_checker import check_autocoder_dir
-from .nodes.file_listing_node import file_listing_node
 
 logger = logging.getLogger(__name__)
 
@@ -25,22 +24,22 @@ class LangGraphWorkflow:
 
     def _build_graph(self):
         graph = StateGraph(State)
-        graph.add_node("check_autocoder_dir", check_autocoder_dir)
-        graph.add_node("file_listing", file_listing_node)
 
+        # Add nodes
+        graph.add_node("check_autocoder_dir", check_autocoder_dir)
         graph.add_node("interpret_task", self._interpret_task)
         graph.add_node("build_context", self._build_context)
         graph.add_node("generate_modifications", self._generate_modifications)
         graph.add_node("apply_modifications", self._apply_modifications)
         graph.add_node("run_tests", self._run_tests)
 
+        # Define edges
         graph.add_edge(START, "check_autocoder_dir")
         graph.add_conditional_edges(
             "check_autocoder_dir",
             self._check_initialization,
-            {True: "file_listing", False: END}
+            {True: "interpret_task", False: END}
         )
-        graph.add_edge("file_listing", "interpret_task")
         graph.add_edge("interpret_task", "build_context")
         graph.add_edge("build_context", "generate_modifications")
         graph.add_edge("generate_modifications", "apply_modifications")
@@ -54,7 +53,10 @@ class LangGraphWorkflow:
         return graph.compile(checkpointer=self.memory)
 
     def _check_initialization(self, state):
-        return state["autocoder_dir_exists"]
+        return state.get("autocoder_dir_exists", False) and self._check_file_listing_success(state)
+
+    def _check_file_listing_success(self, state):
+        return state.get("project_files") is not None and state.get("excluded_files") is not None
 
     def _interpret_task(self, state: State):
         interpreted_task = self.task_interpreter.interpret_task(state["messages"][-1].content)
