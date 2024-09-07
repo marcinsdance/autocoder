@@ -21,64 +21,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Claude Automated Coding")
-    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "help"],
-                        help="Command to execute")
-    parser.add_argument("task_description", nargs='?', default="",
-                        help="The task description for the automated coding process")
-    args = parser.parse_args()
-
-    if args.command == "init":
-        init_autocoder()
-        initialize_file_listing()
-        return
-
-    if args.command == "help" or (args.command == "task" and not args.task_description):
-        if check_autocoder_dir():
-            display_usage_message()
-        else:
-            display_init_message()
-        return
-
-    if args.command == "task":
-        if not check_autocoder_dir():
-            display_init_message()
-            return
-
-        # Load environment variables
-        load_dotenv()
-
-        # Get API key directly from environment
-        api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
-        if not api_key:
-            raise ValueError(
-                "Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .env file")
-
-        # Initialize components
-        project_root = os.getcwd()
-        file_manager = FileManager(project_root)
-        context_builder = ContextBuilder()
-        task_interpreter = TaskInterpreter()
-        code_modifier = CodeModifier()
-        test_runner = TestRunner()
-        error_handler = ErrorHandler()
-        claude_api = ClaudeAPIWrapper(api_key)
-
-        # Initialize LangGraph workflow
-        workflow = LangGraphWorkflow(
-            file_manager, context_builder, task_interpreter,
-            code_modifier, test_runner, error_handler, claude_api
-        )
-
-        # Execute workflow
-        result = workflow.execute(args.task_description)
-
-        print(result)
-
-        # Create debug context if DEBUG mode is enabled
-        if file_manager.is_debug_mode():
-            file_manager.create_debug_context()
+def initialize_autocoder():
+    print("Initializing Autocoder...")
+    init_autocoder()
+    initialize_file_listing()
+    print("Autocoder initialization complete.")
 
 
 def initialize_file_listing():
@@ -89,15 +36,78 @@ def initialize_file_listing():
 
     # Get API key directly from environment
     api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
-    if not api_key:
-        raise ValueError(
-            "Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .env file")
+    claude_api = ClaudeAPIWrapper(api_key) if api_key else None
 
-    claude_api = ClaudeAPIWrapper(api_key)
     file_lister = FileListingNode(project_root, claude_api)
 
     state = {"project_root": project_root, "claude_api": claude_api}
     file_lister.process(state)
+
+
+def execute_task(task_description):
+    if not check_autocoder_dir():
+        print("Autocoder is not initialized in this directory. Please run 'autocoder init' first.")
+        return
+
+    # Load environment variables
+    load_dotenv()
+
+    # Get API key directly from environment
+    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
+    if not api_key:
+        print("Warning: Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .env file")
+        return
+
+    # Initialize components
+    project_root = os.getcwd()
+    file_manager = FileManager(project_root)
+    context_builder = ContextBuilder()
+    task_interpreter = TaskInterpreter()
+    code_modifier = CodeModifier()
+    test_runner = TestRunner()
+    error_handler = ErrorHandler()
+    claude_api = ClaudeAPIWrapper(api_key)
+
+    # Initialize LangGraph workflow
+    workflow = LangGraphWorkflow(
+        file_manager, context_builder, task_interpreter,
+        code_modifier, test_runner, error_handler, claude_api
+    )
+
+    # Execute workflow
+    result = workflow.execute(task_description)
+
+    print(result)
+
+    # Create debug context if DEBUG mode is enabled
+    if file_manager.is_debug_mode():
+        file_manager.create_debug_context()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Claude Automated Coding")
+    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "help"],
+                        help="Command to execute")
+    parser.add_argument("task_description", nargs='?', default="",
+                        help="The task description for the automated coding process")
+    args = parser.parse_args()
+
+    if args.command == "init":
+        initialize_autocoder()
+    elif args.command == "task":
+        if args.task_description:
+            execute_task(args.task_description)
+        else:
+            print("Error: Task description is required for the 'task' command.")
+            display_usage_message()
+    elif args.command == "help" or not args.command:
+        if check_autocoder_dir():
+            display_usage_message()
+        else:
+            display_init_message()
+    else:
+        print(f"Unknown command: {args.command}")
+        display_usage_message()
 
 
 if __name__ == "__main__":
