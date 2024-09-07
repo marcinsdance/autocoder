@@ -1,8 +1,9 @@
 import os
 import logging
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
 logger = logging.getLogger(__name__)
+
 
 class FileListingNode:
     def __init__(self, project_root: str, claude_api):
@@ -13,108 +14,118 @@ class FileListingNode:
     def process(self, state: Dict) -> Dict:
         logger.info("Starting file listing process")
 
-        root_directories = self.list_root_directories()
-        generated_lists = self.generate_lists_with_llm(root_directories)
+        root_items = self.list_root_items()
+        generated_lists = self.generate_lists_with_llm(root_items)
 
         approved_lists = self.get_user_approval(generated_lists)
 
         if approved_lists:
-            expanded_dirs = self.expand_approved_directories(approved_lists['project_directories'])
-            self.save_directory_lists(expanded_dirs, approved_lists['excluded_directories'])
-            state['project_directories'] = expanded_dirs
-            state['excluded_directories'] = approved_lists['excluded_directories']
-            logger.info("Directory listing process completed successfully")
+            expanded_items = self.expand_approved_items(approved_lists['project_items'])
+            self.save_item_lists(expanded_items, approved_lists['excluded_items'])
+            state['project_items'] = expanded_items
+            state['excluded_items'] = approved_lists['excluded_items']
+            logger.info("File and directory listing process completed successfully")
         else:
-            logger.error("User did not approve directory lists. Process aborted.")
-            return self._update_state_with_error(state, "User did not approve directory lists")
+            logger.error("User did not approve item lists. Process aborted.")
+            return self._update_state_with_error(state, "User did not approve item lists")
 
         return state
 
-    def list_root_directories(self) -> List[str]:
-        return [d for d in os.listdir(self.project_root)
-                if os.path.isdir(os.path.join(self.project_root, d))]
+    def list_root_items(self) -> List[Tuple[str, str]]:
+        root_items = []
+        for item in os.listdir(self.project_root):
+            full_path = os.path.join(self.project_root, item)
+            item_type = 'directory' if os.path.isdir(full_path) else 'file'
+            root_items.append((item, item_type))
+        return root_items
 
-    def expand_approved_directories(self, approved_directories: List[str]) -> List[str]:
-        expanded_dirs = []
-        for directory in approved_directories:
-            for root, dirs, _ in os.walk(os.path.join(self.project_root, directory)):
-                for dir in dirs:
-                    rel_path = os.path.relpath(os.path.join(root, dir), self.project_root)
-                    expanded_dirs.append(rel_path)
-            expanded_dirs.append(directory)  # Include the root directory itself
-        return sorted(set(expanded_dirs))  # Remove duplicates and sort
+    def expand_approved_items(self, approved_items: List[str]) -> List[str]:
+        expanded_items = []
+        for item in approved_items:
+            full_path = os.path.join(self.project_root, item)
+            if os.path.isdir(full_path):
+                for root, dirs, files in os.walk(full_path):
+                    for file in files:
+                        rel_path = os.path.relpath(os.path.join(root, file), self.project_root)
+                        expanded_items.append(rel_path)
+                expanded_items.append(item)  # Include the directory itself
+            else:
+                expanded_items.append(item)  # It's a file, just add it
+        return sorted(set(expanded_items))  # Remove duplicates and sort
 
-    def generate_lists_with_llm(self, directories: List[str]) -> Dict[str, List[str]]:
-        system_prompt = """You are an expert in software development and project organization. Your task is to categorize directories in a project."""
+    def generate_lists_with_llm(self, root_items: List[Tuple[str, str]]) -> Dict[str, List[str]]:
+        system_prompt = """You are an expert in software development and project organization. Your task is to categorize files and directories in a project."""
 
-        user_prompt = f"""Given the following list of root-level directories in a project, categorize them into two lists:
-        1. Project Directories: Directories that are likely to contain source code, configuration, or documentation.
-        2. Excluded Directories: Directories that should be excluded from the project context, such as build artifacts, cache directories, or third-party dependencies.
+        user_prompt = f"""Given the following list of root-level items (files and directories) in a project, categorize them into two lists:
+        1. Project Items: Files and directories that are likely to contain source code, configuration, or documentation.
+        2. Excluded Items: Files and directories that should be excluded from the project context, such as build artifacts, cache files/directories, or third-party dependencies.
 
-        Here's the list of all root-level directories in the project:
+        Here's the list of all root-level items in the project:
 
-        {', '.join(directories)}
+        {', '.join([f"{item} ({item_type})" for item, item_type in root_items])}
 
         Consider the following when making your categorization:
         - Common development patterns and best practices
-        - Directories that typically contain source code or important project files
-        - Directories that usually contain build artifacts or generated files
-        - Directories for dependencies or third-party libraries
+        - Files and directories that typically contain source code or important project files
+        - Files and directories that usually contain build artifacts or generated content
+        - Dependencies or third-party libraries
+        - Configuration files that are important for the project
+        - Temporary or backup files
 
         Provide your response in the following format:
 
-        Project Directories:
-        - [List of project directories, one per line]
+        Project Items:
+        - [List of project files and directories, one per line]
 
-        Excluded Directories:
-        - [List of excluded directories, one per line]
+        Excluded Items:
+        - [List of excluded files and directories, one per line]
 
-        Be sure to categorize ALL directories from the provided list."""
+        Be sure to categorize ALL items from the provided list."""
 
         prompt = self.claude_api.format_prompt(system_prompt, user_prompt)
         response = self.claude_api.generate_response(prompt)
 
         if response is None:
             logger.error("Failed to generate response from Claude API")
-            return {"project_directories": [], "excluded_directories": []}
+            return {"project_items": [], "excluded_items": []}
 
         # Parse the response
-        project_dirs = []
-        excluded_dirs = []
+        project_items = []
+        excluded_items = []
         current_list = None
 
         for line in response.split('\n'):
             line = line.strip()
-            if line == "Project Directories:":
-                current_list = project_dirs
-            elif line == "Excluded Directories:":
-                current_list = excluded_dirs
+            if line == "Project Items:":
+                current_list = project_items
+            elif line == "Excluded Items:":
+                current_list = excluded_items
             elif line.startswith("- ") and current_list is not None:
                 current_list.append(line[2:])
 
         return {
-            "project_directories": project_dirs,
-            "excluded_directories": excluded_dirs
+            "project_items": project_items,
+            "excluded_items": excluded_items
         }
 
-    def get_user_approval(self, dir_lists: Dict[str, List[str]]) -> Dict[str, List[str]] | None:
+    def get_user_approval(self, item_lists: Dict[str, List[str]]) -> Dict[str, List[str]] | None:
         while True:
-            print("\nProject Directories:")
-            for dir in dir_lists['project_directories']:
-                print(f"  {dir}")
+            print("\nProject Items:")
+            for item in item_lists['project_items']:
+                print(f"  {item}")
 
-            print("\nExcluded Directories:")
-            for dir in dir_lists['excluded_directories']:
-                print(f"  {dir}")
+            print("\nExcluded Items:")
+            for item in item_lists['excluded_items']:
+                print(f"  {item}")
 
-            approval = input("\nDo you approve these root directory lists? (yes/no/quit): ").lower()
+            approval = input("\nDo you approve these item lists? (yes/no/quit): ").lower()
 
             if approval == 'yes':
-                return dir_lists
+                return item_lists
             elif approval == 'no':
                 print("Please describe the changes you want to make:")
                 changes = input("Your changes: ")
-                dir_lists = self.update_lists_with_llm(dir_lists, changes)
+                item_lists = self.update_lists_with_llm(item_lists, changes)
             elif approval == 'quit':
                 print("Process aborted by user.")
                 return None
@@ -122,26 +133,26 @@ class FileListingNode:
                 print("Invalid input. Please enter 'yes', 'no', or 'quit'.")
 
     def update_lists_with_llm(self, current_lists: Dict[str, List[str]], user_changes: str) -> Dict[str, List[str]]:
-        system_prompt = """You are an expert in software development and project organization. Your task is to update the categorization of directories based on user feedback."""
+        system_prompt = """You are an expert in software development and project organization. Your task is to update the categorization of files and directories based on user feedback."""
 
-        user_prompt = f"""Current root directory categorization:
+        user_prompt = f"""Current root item categorization:
 
-        Project Directories:
-        {', '.join(current_lists['project_directories'])}
+        Project Items:
+        {', '.join(current_lists['project_items'])}
 
-        Excluded Directories:
-        {', '.join(current_lists['excluded_directories'])}
+        Excluded Items:
+        {', '.join(current_lists['excluded_items'])}
 
         User requested changes:
         {user_changes}
 
-        Please update the root directory lists based on the user's request. Provide your response in the following format:
+        Please update the root item lists based on the user's request. Provide your response in the following format:
 
-        Project Directories:
-        - [Updated list of project directories, one per line]
+        Project Items:
+        - [Updated list of project files and directories, one per line]
 
-        Excluded Directories:
-        - [Updated list of excluded directories, one per line]"""
+        Excluded Items:
+        - [Updated list of excluded files and directories, one per line]"""
 
         prompt = self.claude_api.format_prompt(system_prompt, user_prompt)
         response = self.claude_api.generate_response(prompt)
@@ -151,33 +162,33 @@ class FileListingNode:
             return current_lists
 
         # Parse the response
-        project_dirs = []
-        excluded_dirs = []
+        project_items = []
+        excluded_items = []
         current_list = None
 
         for line in response.split('\n'):
             line = line.strip()
-            if line == "Project Directories:":
-                current_list = project_dirs
-            elif line == "Excluded Directories:":
-                current_list = excluded_dirs
+            if line == "Project Items:":
+                current_list = project_items
+            elif line == "Excluded Items:":
+                current_list = excluded_items
             elif line.startswith("- ") and current_list is not None:
                 current_list.append(line[2:])
 
         return {
-            "project_directories": project_dirs,
-            "excluded_directories": excluded_dirs
+            "project_items": project_items,
+            "excluded_items": excluded_items
         }
 
-    def save_directory_lists(self, project_directories: List[str], excluded_directories: List[str]):
+    def save_item_lists(self, project_items: List[str], excluded_items: List[str]):
         autocoder_dir = os.path.join(self.project_root, '.autocoder')
         os.makedirs(autocoder_dir, exist_ok=True)
 
-        with open(os.path.join(autocoder_dir, 'project_directories'), 'w') as f:
-            f.write('\n'.join(project_directories))
+        with open(os.path.join(autocoder_dir, 'project_items'), 'w') as f:
+            f.write('\n'.join(project_items))
 
-        with open(os.path.join(autocoder_dir, 'excluded_directories'), 'w') as f:
-            f.write('\n'.join(excluded_directories))
+        with open(os.path.join(autocoder_dir, 'excluded_items'), 'w') as f:
+            f.write('\n'.join(excluded_items))
 
     def _update_state_with_error(self, state: Dict, error_message: str) -> Dict:
         state['error'] = error_message
