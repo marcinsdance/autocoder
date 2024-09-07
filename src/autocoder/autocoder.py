@@ -42,8 +42,8 @@ def initialize_file_listing():
         logger.debug("API key found in environment variables.")
         claude_api = ClaudeAPIWrapper(api_key)
     else:
-        logger.warning("No API key found. Cannot proceed with file listing.")
-        return
+        logger.warning("No API key found. Proceeding with manual file listing.")
+        claude_api = None
 
     logger.info("Creating FileListingNode...")
     file_lister = FileListingNode(project_root, claude_api)
@@ -55,6 +55,8 @@ def initialize_file_listing():
 
     # You might want to do something with the updated state here,
     # such as saving it or using it to initialize other components
+
+    return updated_state
 
 
 def execute_task(task_description):
