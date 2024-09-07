@@ -25,8 +25,13 @@ def initialize_autocoder():
     logger.info("Starting Autocoder initialization...")
     init_autocoder()
     logger.info("Autocoder directory initialized. Now initializing file listing...")
-    initialize_file_listing()
+    result = initialize_file_listing()
+    if isinstance(result, dict) and result.get('error'):
+        logger.error(f"Autocoder initialization failed: {result['error']}")
+        print(f"Error: {result['error']}")
+        return False
     logger.info("Autocoder initialization complete.")
+    return True
 
 
 def initialize_file_listing():
@@ -38,12 +43,19 @@ def initialize_file_listing():
 
     # Get API key directly from environment
     api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
-    if api_key:
-        logger.debug("API key found in environment variables.")
+    if not api_key:
+        logger.error("No API key found. Cannot proceed with file listing.")
+        return {
+            'error': "No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file."}
+
+    try:
+        logger.debug("Initializing Claude API wrapper...")
         claude_api = ClaudeAPIWrapper(api_key)
-    else:
-        logger.warning("No API key found. Proceeding with manual file listing.")
-        claude_api = None
+        # You might want to add a method to test the API connection here
+        # For example: claude_api.test_connection()
+    except Exception as e:
+        logger.error(f"Failed to initialize Claude API: {str(e)}")
+        return {'error': f"Failed to initialize Claude API: {str(e)}"}
 
     logger.info("Creating FileListingNode...")
     file_lister = FileListingNode(project_root, claude_api)
@@ -51,11 +63,11 @@ def initialize_file_listing():
     state = {"project_root": project_root, "claude_api": claude_api}
     logger.info("Processing file listing...")
     updated_state = file_lister.process(state)
-    logger.info("File listing process completed.")
 
-    # You might want to do something with the updated state here,
-    # such as saving it or using it to initialize other components
+    if updated_state.get('error'):
+        return updated_state
 
+    logger.info("File listing process completed successfully.")
     return updated_state
 
 
@@ -71,7 +83,16 @@ def execute_task(task_description):
     # Get API key directly from environment
     api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
     if not api_key:
-        print("Warning: Neither ANTHROPIC_API_KEY nor CLAUDE_API_KEY is set in the environment variables or .env file")
+        logger.error("No API key found. Cannot proceed with task execution.")
+        print(
+            "Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file.")
+        return
+
+    try:
+        claude_api = ClaudeAPIWrapper(api_key)
+    except Exception as e:
+        logger.error(f"Failed to initialize Claude API: {str(e)}")
+        print(f"Error: Failed to initialize Claude API: {str(e)}")
         return
 
     # Initialize components
@@ -82,7 +103,6 @@ def execute_task(task_description):
     code_modifier = CodeModifier()
     test_runner = TestRunner()
     error_handler = ErrorHandler()
-    claude_api = ClaudeAPIWrapper(api_key)
 
     # Initialize LangGraph workflow
     workflow = LangGraphWorkflow(
@@ -112,7 +132,8 @@ def main():
 
     if args.command == "init":
         logger.info("Initializing Autocoder...")
-        initialize_autocoder()
+        if not initialize_autocoder():
+            return
     elif args.command == "task":
         if args.task_description:
             logger.info(f"Executing task: {args.task_description}")

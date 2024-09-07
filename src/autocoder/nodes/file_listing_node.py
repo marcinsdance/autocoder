@@ -1,40 +1,32 @@
 import os
-import fnmatch
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
-
 class FileListingNode:
-    def __init__(self, project_root: str, claude_api: Optional[object] = None):
+    def __init__(self, project_root: str, claude_api):
         self.project_root = project_root
         self.claude_api = claude_api
-        self.default_exclusions = [
-            '.git', '__pycache__', '*.pyc', '*.pyo', '*.pyd',
-            '.venv', 'node_modules', 'vendor', '*.log', '*.db',
-            '*.sqlite', '*.sqlite3', '*.egg-info', 'build', 'dist',
-            '*.tfstate', '*.tfstate.*', '.terraform', '*.lock.hcl'
-        ]
         logger.debug(f"FileListingNode initialized with project_root: {project_root}")
 
     def process(self, state: Dict) -> Dict:
         logger.info("Starting file listing process")
+        
         all_files = self.list_all_files()
-
-        if self.claude_api:
-            logger.info("Using Claude API for file list generation.")
-            generated_lists = self.generate_lists_with_llm(all_files)
-        else:
-            logger.warning("Claude API not available. Falling back to default exclusions.")
-            generated_lists = self.categorize_files_with_defaults(all_files)
-
+        generated_lists = self.generate_lists_with_llm(all_files)
+        
         approved_lists = self.get_user_approval(generated_lists)
-        self.save_file_lists(approved_lists['project_files'], approved_lists['excluded_files'])
+        
+        if approved_lists:
+            self.save_file_lists(approved_lists['project_files'], approved_lists['excluded_files'])
+            state['project_files'] = approved_lists['project_files']
+            state['excluded_files'] = approved_lists['excluded_files']
+            logger.info("File listing process completed successfully")
+        else:
+            logger.error("User did not approve file lists. Process aborted.")
+            return self._update_state_with_error(state, "User did not approve file lists")
 
-        state['project_files'] = approved_lists['project_files']
-        state['excluded_files'] = approved_lists['excluded_files']
-        logger.info("File listing process completed")
         return state
 
     def list_all_files(self) -> List[str]:
@@ -74,12 +66,12 @@ class FileListingNode:
         """
 
         response = self.claude_api.generate_response(prompt)
-
+        
         # Parse the response
         project_files = []
         excluded_files = []
         current_list = None
-
+        
         for line in response.split('\n'):
             line = line.strip()
             if line == "Project Files:":
@@ -94,22 +86,7 @@ class FileListingNode:
             "excluded_files": excluded_files
         }
 
-    def categorize_files_with_defaults(self, all_files: List[str]) -> Dict[str, List[str]]:
-        project_files = []
-        excluded_files = []
-
-        for file in all_files:
-            if any(fnmatch.fnmatch(file, pattern) for pattern in self.default_exclusions):
-                excluded_files.append(file)
-            else:
-                project_files.append(file)
-
-        return {
-            "project_files": project_files,
-            "excluded_files": excluded_files
-        }
-
-    def get_user_approval(self, file_lists: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    def get_user_approval(self, file_lists: Dict[str, List[str]]) -> Dict[str, List[str]] | None:
         while True:
             print("\nProject Files:")
             for file in file_lists['project_files']:
@@ -119,21 +96,19 @@ class FileListingNode:
             for file in file_lists['excluded_files']:
                 print(f"  {file}")
 
-            approval = input("\nDo you approve these file lists? (yes/no): ").lower()
+            approval = input("\nDo you approve these file lists? (yes/no/quit): ").lower()
 
             if approval == 'yes':
                 return file_lists
             elif approval == 'no':
-                if self.claude_api:
-                    print(
-                        "Please provide your changes in natural language. Describe which files should be moved between lists.")
-                    changes = input("Your changes: ")
-                    file_lists = self.update_lists_with_llm(file_lists, changes)
-                else:
-                    print("Manual update mode:")
-                    file_lists = self.manual_file_listing()
+                print("Please describe the changes you want to make:")
+                changes = input("Your changes: ")
+                file_lists = self.update_lists_with_llm(file_lists, changes)
+            elif approval == 'quit':
+                print("Process aborted by user.")
+                return None
             else:
-                print("Invalid input. Please enter 'yes' or 'no'.")
+                print("Invalid input. Please enter 'yes', 'no', or 'quit'.")
 
     def update_lists_with_llm(self, current_lists: Dict[str, List[str]], user_changes: str) -> Dict[str, List[str]]:
         prompt = f"""
@@ -158,12 +133,12 @@ class FileListingNode:
         """
 
         response = self.claude_api.generate_response(prompt)
-
+        
         # Parse the response
         project_files = []
         excluded_files = []
         current_list = None
-
+        
         for line in response.split('\n'):
             line = line.strip()
             if line == "Project Files:":
@@ -178,30 +153,6 @@ class FileListingNode:
             "excluded_files": excluded_files
         }
 
-    def manual_file_listing(self) -> Dict[str, List[str]]:
-        all_files = self.list_all_files()
-        project_files = []
-        excluded_files = []
-
-        print("Manual file listing process:")
-        print("For each file, enter 'p' to include it in project files, 'e' to exclude it, or 'q' to finish.")
-
-        for file in all_files:
-            while True:
-                choice = input(f"{file} (p/e/q): ").lower()
-                if choice == 'p':
-                    project_files.append(file)
-                    break
-                elif choice == 'e':
-                    excluded_files.append(file)
-                    break
-                elif choice == 'q':
-                    return {"project_files": project_files, "excluded_files": excluded_files}
-                else:
-                    print("Invalid input. Please enter 'p', 'e', or 'q'.")
-
-        return {"project_files": project_files, "excluded_files": excluded_files}
-
     def save_file_lists(self, project_files: List[str], excluded_files: List[str]):
         autocoder_dir = os.path.join(self.project_root, '.autocoder')
         os.makedirs(autocoder_dir, exist_ok=True)
@@ -211,3 +162,12 @@ class FileListingNode:
 
         with open(os.path.join(autocoder_dir, 'excluded_files'), 'w') as f:
             f.write('\n'.join(excluded_files))
+
+    def _update_state_with_error(self, state: Dict, error_message: str) -> Dict:
+        state['error'] = error_message
+        return state
+
+def file_listing_node(state: Dict) -> Dict:
+    logger.info("Executing file_listing_node")
+    file_lister = FileListingNode(state['project_root'], state['claude_api'])
+    return file_lister.process(state)
