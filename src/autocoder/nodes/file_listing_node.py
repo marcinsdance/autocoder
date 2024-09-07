@@ -14,47 +14,44 @@ class FileListingNode:
     def process(self, state: Dict) -> Dict:
         logger.info("Starting file listing process")
 
-        directories = self.list_directories()
-        generated_lists = self.generate_lists_with_llm(directories)
+        root_directories = self.list_root_directories()
+        generated_lists = self.generate_lists_with_llm(root_directories)
 
         approved_lists = self.get_user_approval(generated_lists)
 
         if approved_lists:
-            expanded_files = self.expand_directories(approved_lists['project_files'])
-            self.save_file_lists(expanded_files, approved_lists['excluded_files'])
-            state['project_files'] = expanded_files
-            state['excluded_files'] = approved_lists['excluded_files']
-            logger.info("File listing process completed successfully")
+            expanded_dirs = self.expand_approved_directories(approved_lists['project_directories'])
+            self.save_directory_lists(expanded_dirs, approved_lists['excluded_directories'])
+            state['project_directories'] = expanded_dirs
+            state['excluded_directories'] = approved_lists['excluded_directories']
+            logger.info("Directory listing process completed successfully")
         else:
-            logger.error("User did not approve file lists. Process aborted.")
-            return self._update_state_with_error(state, "User did not approve file lists")
+            logger.error("User did not approve directory lists. Process aborted.")
+            return self._update_state_with_error(state, "User did not approve directory lists")
 
         return state
 
-    def list_directories(self) -> List[str]:
-        directories = []
-        for root, dirs, _ in os.walk(self.project_root):
-            for dir in dirs:
-                rel_path = os.path.relpath(os.path.join(root, dir), self.project_root)
-                directories.append(rel_path)
-        return directories
+    def list_root_directories(self) -> List[str]:
+        return [d for d in os.listdir(self.project_root)
+                if os.path.isdir(os.path.join(self.project_root, d))]
 
-    def expand_directories(self, approved_directories: List[str]) -> List[str]:
-        expanded_files = []
+    def expand_approved_directories(self, approved_directories: List[str]) -> List[str]:
+        expanded_dirs = []
         for directory in approved_directories:
-            for root, _, files in os.walk(os.path.join(self.project_root, directory)):
-                for file in files:
-                    rel_path = os.path.relpath(os.path.join(root, file), self.project_root)
-                    expanded_files.append(rel_path)
-        return expanded_files
+            for root, dirs, _ in os.walk(os.path.join(self.project_root, directory)):
+                for dir in dirs:
+                    rel_path = os.path.relpath(os.path.join(root, dir), self.project_root)
+                    expanded_dirs.append(rel_path)
+            expanded_dirs.append(directory)  # Include the root directory itself
+        return sorted(set(expanded_dirs))  # Remove duplicates and sort
 
     def generate_lists_with_llm(self, directories: List[str]) -> Dict[str, List[str]]:
         prompt = f"""
-        You are an expert in software development and project organization. Given the following list of directories in a project, categorize them into two lists:
+        You are an expert in software development and project organization. Given the following list of root-level directories in a project, categorize them into two lists:
         1. Project Directories: Directories that are likely to contain source code, configuration, or documentation.
         2. Excluded Directories: Directories that should be excluded from the project context, such as build artifacts, cache directories, or third-party dependencies.
 
-        Here's the list of all directories in the project:
+        Here's the list of all root-level directories in the project:
 
         {', '.join(directories)}
 
@@ -92,21 +89,21 @@ class FileListingNode:
                 current_list.append(line[2:])
 
         return {
-            "project_files": project_dirs,
-            "excluded_files": excluded_dirs
+            "project_directories": project_dirs,
+            "excluded_directories": excluded_dirs
         }
 
     def get_user_approval(self, dir_lists: Dict[str, List[str]]) -> Dict[str, List[str]] | None:
         while True:
             print("\nProject Directories:")
-            for dir in dir_lists['project_files']:
+            for dir in dir_lists['project_directories']:
                 print(f"  {dir}")
 
             print("\nExcluded Directories:")
-            for dir in dir_lists['excluded_files']:
+            for dir in dir_lists['excluded_directories']:
                 print(f"  {dir}")
 
-            approval = input("\nDo you approve these directory lists? (yes/no/quit): ").lower()
+            approval = input("\nDo you approve these root directory lists? (yes/no/quit): ").lower()
 
             if approval == 'yes':
                 return dir_lists
@@ -122,18 +119,18 @@ class FileListingNode:
 
     def update_lists_with_llm(self, current_lists: Dict[str, List[str]], user_changes: str) -> Dict[str, List[str]]:
         prompt = f"""
-        Current directory categorization:
+        Current root directory categorization:
 
         Project Directories:
-        {', '.join(current_lists['project_files'])}
+        {', '.join(current_lists['project_directories'])}
 
         Excluded Directories:
-        {', '.join(current_lists['excluded_files'])}
+        {', '.join(current_lists['excluded_directories'])}
 
         User requested changes:
         {user_changes}
 
-        Please update the directory lists based on the user's request. Provide your response in the following format:
+        Please update the root directory lists based on the user's request. Provide your response in the following format:
 
         Project Directories:
         - [Updated list of project directories, one per line]
@@ -159,19 +156,19 @@ class FileListingNode:
                 current_list.append(line[2:])
 
         return {
-            "project_files": project_dirs,
-            "excluded_files": excluded_dirs
+            "project_directories": project_dirs,
+            "excluded_directories": excluded_dirs
         }
 
-    def save_file_lists(self, project_files: List[str], excluded_files: List[str]):
+    def save_directory_lists(self, project_directories: List[str], excluded_directories: List[str]):
         autocoder_dir = os.path.join(self.project_root, '.autocoder')
         os.makedirs(autocoder_dir, exist_ok=True)
 
-        with open(os.path.join(autocoder_dir, 'project_files'), 'w') as f:
-            f.write('\n'.join(project_files))
+        with open(os.path.join(autocoder_dir, 'project_directories'), 'w') as f:
+            f.write('\n'.join(project_directories))
 
-        with open(os.path.join(autocoder_dir, 'excluded_files'), 'w') as f:
-            f.write('\n'.join(excluded_files))
+        with open(os.path.join(autocoder_dir, 'excluded_directories'), 'w') as f:
+            f.write('\n'.join(excluded_directories))
 
     def _update_state_with_error(self, state: Dict, error_message: str) -> Dict:
         state['error'] = error_message

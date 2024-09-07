@@ -40,7 +40,6 @@ def initialize_file_listing():
 
     # Load environment variables
     load_dotenv()
-    print("Environment variables:", os.environ)
     print("ANTHROPIC_API_KEY:", os.getenv('ANTHROPIC_API_KEY'))
     print("CLAUDE_API_KEY:", os.getenv('CLAUDE_API_KEY'))
     print("OPENAI_API_KEY:", os.getenv('OPENAI_API_KEY'))
