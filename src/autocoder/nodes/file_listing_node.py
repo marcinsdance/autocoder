@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Set
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,7 @@ class FileListingNode:
             '*.log', '*.sqlite3', '*.db', '*.swp',
             '.DS_Store', 'Thumbs.db'
         }
+        self.auto_excluded_items: Set[str] = set()
 
     def process(self, state: Dict) -> Dict:
         logger.info("Starting file listing process")
@@ -30,9 +31,13 @@ class FileListingNode:
         if approved_lists:
             expanded_items = self.expand_approved_items(approved_lists['project_items'])
             filtered_expanded_items = self.filter_common_excludes([(item, 'unknown') for item in expanded_items])
-            self.save_item_lists([item for item, _ in filtered_expanded_items], approved_lists['excluded_items'])
-            state['project_items'] = [item for item, _ in filtered_expanded_items]
-            state['excluded_items'] = approved_lists['excluded_items']
+
+            project_items = [item for item, _ in filtered_expanded_items]
+            excluded_items = set(approved_lists['excluded_items']) | self.auto_excluded_items
+
+            self.save_item_lists(project_items, list(excluded_items))
+            state['project_items'] = project_items
+            state['excluded_items'] = list(excluded_items)
             logger.info("File and directory listing process completed successfully")
         else:
             logger.error("User did not approve item lists. Process aborted.")
@@ -53,6 +58,8 @@ class FileListingNode:
         for item, item_type in items:
             if not any(self.match_pattern(item, pattern) for pattern in self.common_excludes):
                 filtered_items.append((item, item_type))
+            else:
+                self.auto_excluded_items.add(item)
         return filtered_items
 
     def match_pattern(self, item: str, pattern: str) -> bool:
@@ -66,17 +73,22 @@ class FileListingNode:
             full_path = os.path.join(self.project_root, item)
             if os.path.isdir(full_path):
                 for root, dirs, files in os.walk(full_path):
+                    rel_root = os.path.relpath(root, self.project_root)
                     # Filter out common excludes from dirs to prevent walking into them
-                    dirs[:] = [d for d in dirs if
-                               not any(self.match_pattern(d, pattern) for pattern in self.common_excludes)]
+                    dirs[:] = [d for d in dirs if not self.should_exclude(os.path.join(rel_root, d))]
                     for file in files:
-                        if not any(self.match_pattern(file, pattern) for pattern in self.common_excludes):
-                            rel_path = os.path.relpath(os.path.join(root, file), self.project_root)
+                        rel_path = os.path.join(rel_root, file)
+                        if not self.should_exclude(rel_path):
                             expanded_items.append(rel_path)
+                        else:
+                            self.auto_excluded_items.add(rel_path)
                 expanded_items.append(item)  # Include the directory itself
             else:
                 expanded_items.append(item)  # It's a file, just add it
         return sorted(set(expanded_items))  # Remove duplicates and sort
+
+    def should_exclude(self, item: str) -> bool:
+        return any(self.match_pattern(os.path.basename(item), pattern) for pattern in self.common_excludes)
 
     def generate_lists_with_llm(self, root_items: List[Tuple[str, str]]) -> Dict[str, List[str]]:
         system_prompt = """You are an expert in software development and project organization. Your task is to categorize files and directories in a project."""
@@ -143,6 +155,10 @@ class FileListingNode:
             for item in item_lists['excluded_items']:
                 print(f"  {item}")
 
+            print("\nAutomatically Excluded Items:")
+            for item in sorted(self.auto_excluded_items):
+                print(f"  {item}")
+
             approval = input("\nDo you approve these item lists? (yes/no/quit): ").lower()
 
             if approval == 'yes':
@@ -167,6 +183,9 @@ class FileListingNode:
 
         Excluded Items:
         {', '.join(current_lists['excluded_items'])}
+
+        Automatically Excluded Items:
+        {', '.join(sorted(self.auto_excluded_items))}
 
         User requested changes:
         {user_changes}
