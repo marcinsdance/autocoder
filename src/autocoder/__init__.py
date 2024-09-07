@@ -9,7 +9,7 @@ from .error_handler import ErrorHandler
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
 from .state import State
-from .nodes.file_listing_node import FileListingNode
+from .file_listing.file_listing_node import FileListingNode
 
 __all__ = [
     'main',

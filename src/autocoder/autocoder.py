@@ -15,7 +15,7 @@ from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
 from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder, \
     display_usage_message
-from .nodes.file_listing_node import FileListingNode
+from .file_listing.file_listing_node import FileListingNode
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
