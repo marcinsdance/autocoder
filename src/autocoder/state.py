@@ -1,10 +1,14 @@
-from typing import Annotated, TypedDict
+from typing import Annotated, TypedDict, List, Dict
 from langgraph.graph.message import add_messages
+from langchain_core.messages import BaseMessage
 
 class State(TypedDict):
-    messages: Annotated[list, add_messages]
-    files: dict
+    messages: Annotated[List[BaseMessage], add_messages]
+    files: Dict[str, str]
     context: str
-    interpreted_task: dict
+    interpreted_task: Dict[str, any]
     modifications: str
     test_results: str
+    project_root: str
+    claude_api: any  # You might want to create a specific type for this
+    autocoder_dir_exists: bool

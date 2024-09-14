@@ -1,15 +1,3 @@
-#File ./.env.example:
-PROJECT_DIRECTORY=/path/to/your/project
-CLAUDE_API_KEY=your_claude_api_key_here
-OPENAI_API_KEY=your_openai_api_key_here
-DEBUG=true
-
-
-
-
-
-
-
 #File ./conftest.py:
 import sys
 from pathlib import Path
@@ -17,137 +5,6 @@ from pathlib import Path
 # Add the src directory to the Python path
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
-
-
-
-
-
-
-
-#File ./requirements.txt:
-python-dotenv==1.0.1
-requests==2.32.3
-openai==1.36
-anthropic==0.31.2
-langgraph==0.1.9
-pytest==8.2.2
-astor==0.8.1
-
-
-
-
-
-
-#File ./src/autocoder/__init__.py:
-from .autocoder import main
-
-from .file_manager import FileManager
-from .context_builder import ContextBuilder
-from .task_interpreter import TaskInterpreter
-from .code_modifier import CodeModifier
-from .test_runner import TestRunner
-from .error_handler import ErrorHandler
-from .claude_api_wrapper import ClaudeAPIWrapper
-from .langgraph_workflow import LangGraphWorkflow
-from .state import State
-from .file_listing.file_listing_node import FileListingNode
-
-__all__ = [
-    'main',
-    'FileManager',
-    'ContextBuilder',
-    'TaskInterpreter',
-    'CodeModifier',
-    'TestRunner',
-    'ErrorHandler',
-    'ClaudeAPIWrapper',
-    'LangGraphWorkflow',
-    'State',
-    'FileListingNode'
-]
-
-
-
-
-
-
-
-#File ./src/autocoder/claude_api_wrapper.py:
-from anthropic import Anthropic
-
-class ClaudeAPIWrapper:
-    def __init__(self, api_key):
-        self.client = Anthropic(api_key=api_key)
-        self.model = "claude-3-opus-20240229"  # Using the latest Claude 3 model
-
-    def generate_response(self, prompt):
-        try:
-            message = self.client.messages.create(
-                model=self.model,
-                max_tokens=1000,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            return message.content[0].text
-        except Exception as e:
-            print(f"An error occurred: {str(e)}")
-            return None
-
-    def format_prompt(self, system_prompt, user_prompt):
-        return f"{system_prompt}\n\n{user_prompt}"
-
-
-
-
-
-
-
-#File ./src/autocoder/context_builder.py:
-class ContextBuilder:
-    def __init__(self):
-        self.context = {}
-
-    def build_context(self, file_manager):
-        context = file_manager.get_context()
-        self.context['built_context'] = context
-        return context
-
-    def get_full_context(self):
-        return self.context
-
-    def add_context(self, key, value):
-        self.context[key] = value
-
-    def get_context(self, key):
-        if key in self.context:
-            return self.context[key]
-        else:
-            raise KeyError(f"Key '{key}' not found in context")
-
-    def update_context(self, key, value):
-        if key in self.context:
-            self.context[key] = value
-        else:
-            raise KeyError(f"Key '{key}' not found in context")
-
-    def remove_context(self, key):
-        if key in self.context:
-            del self.context[key]
-        else:
-            raise KeyError(f"Key '{key}' not found in context")
-
-    def clear_context(self):
-        self.context.clear()
-
-    def context_exists(self, key):
-        return key in self.context
-
-    def get_size(self):
-        return len(self.context)
-
-    def add_multiple_context(self, context_dict):
-        self.context.update(context_dict)
 
 
 
@@ -198,68 +55,6 @@ class ErrorHandler:
     def log_error(self, error):
         logger.error(f"An error occurred: {str(error)}")
         logger.error(traceback.format_exc())
-
-
-
-
-
-
-
-#File ./src/autocoder/file_manager.py:
-import os
-import fnmatch
-from typing import List, Dict
-
-class FileManager:
-    def __init__(self, project_root: str):
-        self.project_root = project_root
-        self.project_files: List[str] = []
-        self.excluded_files: List[str] = []
-
-    def read_file(self, file_path: str) -> str:
-        with open(os.path.join(self.project_root, file_path), 'r') as file:
-            return file.read()
-
-    def write_file(self, file_path: str, content: str):
-        with open(os.path.join(self.project_root, file_path), 'w') as file:
-            file.write(content)
-
-    def load_file_lists(self):
-        autocoder_dir = os.path.join(self.project_root, '.autocoder')
-        project_files_path = os.path.join(autocoder_dir, 'project_files')
-        excluded_files_path = os.path.join(autocoder_dir, 'excluded_files')
-
-        if os.path.exists(project_files_path):
-            with open(project_files_path, 'r') as f:
-                self.project_files = [line.strip() for line in f if line.strip()]
-
-        if os.path.exists(excluded_files_path):
-            with open(excluded_files_path, 'r') as f:
-                self.excluded_files = [line.strip() for line in f if line.strip()]
-
-    def get_file_contents(self) -> Dict[str, str]:
-        return {file: self.read_file(file) for file in self.project_files}
-
-    def is_debug_mode(self) -> bool:
-        return os.getenv('DEBUG', 'false').lower() == 'true'
-
-    def create_debug_context(self):
-        if not self.is_debug_mode():
-            return
-
-        debug_context = ""
-        for file in self.project_files:
-            debug_context += f"#File {file}:\n{self.read_file(file)}\n\n"
-
-        debug_context_path = os.path.join(self.project_root, '.autocoder', 'debug_context.txt')
-        self.write_file(debug_context_path, debug_context)
-
-    def get_context(self) -> str:
-        if self.is_debug_mode():
-            debug_context_path = os.path.join(self.project_root, '.autocoder', 'debug_context.txt')
-            return self.read_file(debug_context_path)
-        else:
-            return "\n\n".join([f"#File {file}:\n{self.read_file(file)}" for file in self.project_files])
 
 
 
@@ -518,6 +313,461 @@ def init_autocoder():
 
 
 
+#File ./src/autocoder/file_listing/__init__.py:
+from .file_listing_node import FileListingNode
+
+
+
+
+
+
+#File ./src/autocoder/file_listing/file_listing_node.py:
+import os
+from pathlib import Path
+import logging
+import pathspec
+
+logger = logging.getLogger(__name__)
+
+class FileListingNode:
+    def __init__(self, project_root, claude_api):
+        self.project_root = Path(project_root)
+        self.claude_api = claude_api
+
+    def process(self, state):
+        try:
+            ignore_spec = self.get_ignore_spec()
+            project_files = self.list_project_files(ignore_spec)
+            state['project_files'] = project_files
+            state['excluded_files'] = [str(pat) for pat in ignore_spec.patterns]
+            # Build context
+            context = self.build_context(project_files)
+            state['context'] = context
+            logger.info("Context built successfully.")
+            return state
+        except Exception as e:
+            logger.error(f"Error in FileListingNode: {str(e)}")
+            state['error'] = str(e)
+            return state
+
+    def get_ignore_spec(self):
+        patterns = []
+        # Read .gitignore
+        gitignore_path = self.project_root / '.gitignore'
+        if gitignore_path.exists():
+            with gitignore_path.open('r') as f:
+                gitignore_content = f.read()
+            patterns.extend(gitignore_content.splitlines())
+            logger.info("Read .gitignore and compiled ignore patterns.")
+        else:
+            logger.warning(".gitignore file not found.")
+
+        # Add default ignore patterns
+        default_ignores = [
+            '.git/',
+            '.hg/',
+            '.svn/',
+            '.idea/',
+            '*.egg-info/',
+            '__pycache__/',
+            '.DS_Store',
+            '*.pyc',
+            '.venv/',
+            'env/',
+            'build/',
+            'dist/',
+            'node_modules/',
+            '*.log',
+            '*.tmp',
+        ]
+        patterns.extend(default_ignores)
+        spec = pathspec.PathSpec.from_lines('gitwildmatch', patterns)
+        return spec
+
+    def list_project_files(self, ignore_spec):
+        project_files = []
+        for root, dirs, files in os.walk(self.project_root):
+            # Compute relative paths
+            root_relative = os.path.relpath(root, self.project_root)
+            if root_relative == '.':
+                root_relative = ''
+            # Prepare directory paths for matching
+            dirs_to_remove = []
+            for d in dirs:
+                dir_path = os.path.join(root_relative, d)
+                if ignore_spec.match_file(dir_path + '/'):
+                    dirs_to_remove.append(d)
+            for d in dirs_to_remove:
+                dirs.remove(d)
+            for file in files:
+                rel_path = os.path.join(root_relative, file)
+                if not ignore_spec.match_file(rel_path):
+                    project_files.append(rel_path)
+        logger.info(f"Listed project files: {len(project_files)} files found.")
+        return project_files
+
+    def build_context(self, project_files):
+        context = ''
+        for file in project_files:
+            file_path = self.project_root / file
+            try:
+                with file_path.open('r', encoding='utf-8') as f:
+                    content = f.read()
+                context += f'#File {file}:\n{content}\n\n'
+            except Exception as e:
+                logger.warning(f"Could not read file {file}: {str(e)}")
+        logger.info("Built context from project files.")
+        return context
+
+
+
+
+
+
+
+#File ./src/autocoder/__init__.py:
+from .autocoder import main
+
+from .file_manager import FileManager
+from .context_builder import ContextBuilder
+from .task_interpreter import TaskInterpreter
+from .code_modifier import CodeModifier
+from .test_runner import TestRunner
+from .error_handler import ErrorHandler
+from .claude_api_wrapper import ClaudeAPIWrapper
+from .langgraph_workflow import LangGraphWorkflow
+from .state import State
+from .file_listing.file_listing_node import FileListingNode
+
+__all__ = [
+    'main',
+    'FileManager',
+    'ContextBuilder',
+    'TaskInterpreter',
+    'CodeModifier',
+    'TestRunner',
+    'ErrorHandler',
+    'ClaudeAPIWrapper',
+    'LangGraphWorkflow',
+    'State',
+    'FileListingNode'
+]
+
+
+
+
+
+
+
+#File ./src/autocoder/autocoder.py:
+#!/usr/bin/env python3
+
+import argparse
+import logging
+import os
+from dotenv import load_dotenv
+
+from .file_manager import FileManager
+from .context_builder import ContextBuilder
+from .task_interpreter import TaskInterpreter
+from .code_modifier import CodeModifier
+from .test_runner import TestRunner
+from .error_handler import ErrorHandler
+from .claude_api_wrapper import ClaudeAPIWrapper
+from .langgraph_workflow import LangGraphWorkflow
+from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder, \
+    display_usage_message
+from .file_listing.file_listing_node import FileListingNode
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+
+def initialize_autocoder():
+    logger.info("Starting Autocoder initialization...")
+    init_autocoder()
+    logger.info("Autocoder directory initialized. Now initializing file listing...")
+    result = initialize_file_listing()
+    if isinstance(result, dict) and result.get('error'):
+        logger.error(f"Autocoder initialization failed: {result['error']}")
+        print(f"Error: {result['error']}")
+        return False
+    logger.info("Autocoder initialization complete.")
+    return True
+
+
+def initialize_file_listing():
+    project_root = os.getcwd()
+    logger.debug(f"Current working directory: {project_root}")
+
+    # Load environment variables
+    load_dotenv()
+    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY') or os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        logger.error("No API key found. Cannot proceed with file listing.")
+        return {
+            'error': "No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file."}
+
+    try:
+        logger.debug("Initializing Claude API wrapper...")
+        claude_api = ClaudeAPIWrapper(api_key)
+    except Exception as e:
+        logger.error(f"Failed to initialize Claude API: {str(e)}")
+        return {'error': f"Failed to initialize Claude API: {str(e)}"}
+
+    logger.info("Creating FileListingNode...")
+    file_lister = FileListingNode(project_root, claude_api)
+
+    state = {"project_root": project_root, "claude_api": claude_api}
+    logger.info("Processing file listing...")
+    updated_state = file_lister.process(state)
+
+    if updated_state.get('error'):
+        return updated_state
+
+    logger.info("File listing process completed successfully.")
+    return updated_state
+
+
+def execute_task(task_description):
+    if not check_autocoder_dir():
+        logger.error("Autocoder is not initialized in this directory.")
+        print("Autocoder is not initialized in this directory. Please run 'autocoder init' first.")
+        return
+
+    # Load environment variables
+    load_dotenv()
+    print("Environment variables:", os.environ)
+
+    # Get API key directly from environment
+    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY') or os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        logger.error("No API key found. Cannot proceed with task execution.")
+        print(
+            "Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file.")
+        return
+
+    try:
+        claude_api = ClaudeAPIWrapper(api_key)
+    except Exception as e:
+        logger.error(f"Failed to initialize Claude API: {str(e)}")
+        print(f"Error: Failed to initialize Claude API: {str(e)}")
+        return
+
+    # Initialize components
+    project_root = os.getcwd()
+    file_manager = FileManager(project_root)
+    context_builder = ContextBuilder()
+    task_interpreter = TaskInterpreter()
+    code_modifier = CodeModifier()
+    test_runner = TestRunner()
+    error_handler = ErrorHandler()
+
+    # Initialize LangGraph workflow
+    workflow = LangGraphWorkflow(
+        file_manager, context_builder, task_interpreter,
+        code_modifier, test_runner, error_handler, claude_api
+    )
+
+    # Execute workflow
+    result = workflow.execute(task_description)
+
+    print(result)
+
+    # Create debug context if DEBUG mode is enabled
+    if file_manager.is_debug_mode():
+        file_manager.create_debug_context()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Claude Automated Coding")
+    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "help"],
+                        help="Command to execute")
+    parser.add_argument("task_description", nargs='?', default="",
+                        help="The task description for the automated coding process")
+    args = parser.parse_args()
+
+    logger.debug(f"Received command: {args.command}")
+
+    if args.command == "init":
+        logger.info("Initializing Autocoder...")
+        if not initialize_autocoder():
+            return
+    elif args.command == "task":
+        if args.task_description:
+            logger.info(f"Executing task: {args.task_description}")
+            execute_task(args.task_description)
+        else:
+            logger.error("No task description provided for 'task' command.")
+            print("Error: Task description is required for the 'task' command.")
+            display_usage_message()
+    elif args.command == "help" or not args.command:
+        if check_autocoder_dir():
+            logger.info("Displaying usage message for initialized directory.")
+            display_usage_message()
+        else:
+            logger.info("Displaying initialization message for uninitialized directory.")
+            display_init_message()
+    else:
+        logger.error(f"Unknown command: {args.command}")
+        print(f"Unknown command: {args.command}")
+        display_usage_message()
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+#File ./src/autocoder/claude_api_wrapper.py:
+from anthropic import Anthropic
+
+class ClaudeAPIWrapper:
+    def __init__(self, api_key):
+        self.client = Anthropic(api_key=api_key)
+        self.model = "claude-3-opus-20240229"  # Using the latest Claude 3 model
+
+    def generate_response(self, prompt):
+        try:
+            message = self.client.messages.create(
+                model=self.model,
+                max_tokens=1000,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return message.content[0].text
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
+            return None
+
+    def format_prompt(self, system_prompt, user_prompt):
+        return f"{system_prompt}\n\n{user_prompt}"
+
+
+
+
+
+
+
+#File ./src/autocoder/context_builder.py:
+class ContextBuilder:
+    def __init__(self):
+        self.context = {}
+
+    def build_context(self, file_manager):
+        context = file_manager.get_context()
+        self.context['built_context'] = context
+        return context
+
+    def get_full_context(self):
+        return self.context
+
+    def add_context(self, key, value):
+        self.context[key] = value
+
+    def get_context(self, key):
+        if key in self.context:
+            return self.context[key]
+        else:
+            raise KeyError(f"Key '{key}' not found in context")
+
+    def update_context(self, key, value):
+        if key in self.context:
+            self.context[key] = value
+        else:
+            raise KeyError(f"Key '{key}' not found in context")
+
+    def remove_context(self, key):
+        if key in self.context:
+            del self.context[key]
+        else:
+            raise KeyError(f"Key '{key}' not found in context")
+
+    def clear_context(self):
+        self.context.clear()
+
+    def context_exists(self, key):
+        return key in self.context
+
+    def get_size(self):
+        return len(self.context)
+
+    def add_multiple_context(self, context_dict):
+        self.context.update(context_dict)
+
+
+
+
+
+
+
+#File ./src/autocoder/file_manager.py:
+import os
+import fnmatch
+from typing import List, Dict
+
+class FileManager:
+    def __init__(self, project_root: str):
+        self.project_root = project_root
+        self.project_files: List[str] = []
+        self.excluded_files: List[str] = []
+
+    def read_file(self, file_path: str) -> str:
+        with open(os.path.join(self.project_root, file_path), 'r') as file:
+            return file.read()
+
+    def write_file(self, file_path: str, content: str):
+        with open(os.path.join(self.project_root, file_path), 'w') as file:
+            file.write(content)
+
+    def load_file_lists(self):
+        autocoder_dir = os.path.join(self.project_root, '.autocoder')
+        project_files_path = os.path.join(autocoder_dir, 'project_files')
+        excluded_files_path = os.path.join(autocoder_dir, 'excluded_files')
+
+        if os.path.exists(project_files_path):
+            with open(project_files_path, 'r') as f:
+                self.project_files = [line.strip() for line in f if line.strip()]
+
+        if os.path.exists(excluded_files_path):
+            with open(excluded_files_path, 'r') as f:
+                self.excluded_files = [line.strip() for line in f if line.strip()]
+
+    def get_file_contents(self) -> Dict[str, str]:
+        return {file: self.read_file(file) for file in self.project_files}
+
+    def is_debug_mode(self) -> bool:
+        return os.getenv('DEBUG', 'false').lower() == 'true'
+
+    def create_debug_context(self):
+        if not self.is_debug_mode():
+            return
+
+        debug_context = ""
+        for file in self.project_files:
+            debug_context += f"#File {file}:\n{self.read_file(file)}\n\n"
+
+        debug_context_path = os.path.join(self.project_root, '.autocoder', 'debug_context.txt')
+        self.write_file(debug_context_path, debug_context)
+
+    def get_context(self) -> str:
+        if self.is_debug_mode():
+            debug_context_path = os.path.join(self.project_root, '.autocoder', 'debug_context.txt')
+            return self.read_file(debug_context_path)
+        else:
+            return "\n\n".join([f"#File {file}:\n{self.read_file(file)}" for file in self.project_files])
+
+
+
+
+
+
+
 #File ./src/autocoder/langgraph_workflow.py:
 import logging
 from typing import Annotated, TypedDict
@@ -643,177 +893,6 @@ class LangGraphWorkflow:
 
 
 
-#File ./src/autocoder/autocoder.py:
-#!/usr/bin/env python3
-
-import argparse
-import logging
-import os
-from dotenv import load_dotenv
-
-from .file_manager import FileManager
-from .context_builder import ContextBuilder
-from .task_interpreter import TaskInterpreter
-from .code_modifier import CodeModifier
-from .test_runner import TestRunner
-from .error_handler import ErrorHandler
-from .claude_api_wrapper import ClaudeAPIWrapper
-from .langgraph_workflow import LangGraphWorkflow
-from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder, \
-    display_usage_message
-from .file_listing.file_listing_node import FileListingNode
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
-
-def initialize_autocoder():
-    logger.info("Starting Autocoder initialization...")
-    init_autocoder()
-    logger.info("Autocoder directory initialized. Now initializing file listing...")
-    result = initialize_file_listing()
-    if isinstance(result, dict) and result.get('error'):
-        logger.error(f"Autocoder initialization failed: {result['error']}")
-        print(f"Error: {result['error']}")
-        return False
-    logger.info("Autocoder initialization complete.")
-    return True
-
-
-def initialize_file_listing():
-    project_root = os.getcwd()
-    logger.debug(f"Current working directory: {project_root}")
-
-    # Load environment variables
-    load_dotenv()
-    print("ANTHROPIC_API_KEY:", os.getenv('ANTHROPIC_API_KEY'))
-    print("CLAUDE_API_KEY:", os.getenv('CLAUDE_API_KEY'))
-    print("OPENAI_API_KEY:", os.getenv('OPENAI_API_KEY'))
-    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY') or os.getenv('OPENAI_API_KEY')
-    print("Selected API key:", api_key)
-
-    if not api_key:
-        logger.error("No API key found. Cannot proceed with file listing.")
-        return {
-            'error': "No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file."}
-
-    try:
-        logger.debug("Initializing Claude API wrapper...")
-        claude_api = ClaudeAPIWrapper(api_key)
-        # You might want to add a method to test the API connection here
-        # For example: claude_api.test_connection()
-    except Exception as e:
-        logger.error(f"Failed to initialize Claude API: {str(e)}")
-        return {'error': f"Failed to initialize Claude API: {str(e)}"}
-
-    logger.info("Creating FileListingNode...")
-    file_lister = FileListingNode(project_root, claude_api)
-
-    state = {"project_root": project_root, "claude_api": claude_api}
-    logger.info("Processing file listing...")
-    updated_state = file_lister.process(state)
-
-    if updated_state.get('error'):
-        return updated_state
-
-    logger.info("File listing process completed successfully.")
-    return updated_state
-
-
-def execute_task(task_description):
-    if not check_autocoder_dir():
-        logger.error("Autocoder is not initialized in this directory.")
-        print("Autocoder is not initialized in this directory. Please run 'autocoder init' first.")
-        return
-
-    # Load environment variables
-    load_dotenv()
-    print("Environment variables:", os.environ)
-
-    # Get API key directly from environment
-    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY') or os.getenv('OPENAI_API_KEY')
-    if not api_key:
-        logger.error("No API key found. Cannot proceed with task execution.")
-        print(
-            "Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file.")
-        return
-
-    try:
-        claude_api = ClaudeAPIWrapper(api_key)
-    except Exception as e:
-        logger.error(f"Failed to initialize Claude API: {str(e)}")
-        print(f"Error: Failed to initialize Claude API: {str(e)}")
-        return
-
-    # Initialize components
-    project_root = os.getcwd()
-    file_manager = FileManager(project_root)
-    context_builder = ContextBuilder()
-    task_interpreter = TaskInterpreter()
-    code_modifier = CodeModifier()
-    test_runner = TestRunner()
-    error_handler = ErrorHandler()
-
-    # Initialize LangGraph workflow
-    workflow = LangGraphWorkflow(
-        file_manager, context_builder, task_interpreter,
-        code_modifier, test_runner, error_handler, claude_api
-    )
-
-    # Execute workflow
-    result = workflow.execute(task_description)
-
-    print(result)
-
-    # Create debug context if DEBUG mode is enabled
-    if file_manager.is_debug_mode():
-        file_manager.create_debug_context()
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Claude Automated Coding")
-    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "help"],
-                        help="Command to execute")
-    parser.add_argument("task_description", nargs='?', default="",
-                        help="The task description for the automated coding process")
-    args = parser.parse_args()
-
-    logger.debug(f"Received command: {args.command}")
-
-    if args.command == "init":
-        logger.info("Initializing Autocoder...")
-        if not initialize_autocoder():
-            return
-    elif args.command == "task":
-        if args.task_description:
-            logger.info(f"Executing task: {args.task_description}")
-            execute_task(args.task_description)
-        else:
-            logger.error("No task description provided for 'task' command.")
-            print("Error: Task description is required for the 'task' command.")
-            display_usage_message()
-    elif args.command == "help" or not args.command:
-        if check_autocoder_dir():
-            logger.info("Displaying usage message for initialized directory.")
-            display_usage_message()
-        else:
-            logger.info("Displaying initialization message for uninitialized directory.")
-            display_init_message()
-    else:
-        logger.error(f"Unknown command: {args.command}")
-        print(f"Unknown command: {args.command}")
-        display_usage_message()
-
-
-if __name__ == "__main__":
-    main()
-
-
-
-
-
-
-
 #File ./tests/test_context_builder.py:
 import pytest
 import os
@@ -892,6 +971,101 @@ def test_get_full_context(context_builder):
     context_builder.add_multiple_context({"key1": "value1", "key2": "value2"})
     full_context = context_builder.get_full_context()
     assert full_context == {"key1": "value1", "key2": "value2"}
+
+
+
+
+
+
+#File ./tests/test_file_listing_node.py:
+import os
+import logging
+from autocoder.file_listing.file_listing_node import FileListingNode
+from autocoder.claude_api_wrapper import ClaudeAPIWrapper
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def test_file_listing_node():
+    project_root = os.getcwd()  # Or specify the path to your project
+    api_key = 'your_api_key_here'  # Replace with your actual API key
+    claude_api = ClaudeAPIWrapper(api_key)
+    file_lister = FileListingNode(project_root, claude_api)
+
+    state = {"project_root": project_root, "claude_api": claude_api}
+    updated_state = file_lister.process(state)
+
+    if 'error' in updated_state:
+        print(f"Error: {updated_state['error']}")
+    else:
+        print("Project Files:")
+        for file in updated_state['project_files']:
+            print(file)
+        print("\nContext:")
+        print(updated_state['context'][:500])  # Print first 500 characters of context
+
+if __name__ == "__main__":
+    test_file_listing_node()
+
+
+
+
+
+
+
+#File ./.env.example:
+PROJECT_DIRECTORY=/path/to/your/project
+CLAUDE_API_KEY=your_claude_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
+DEBUG=true
+
+
+
+
+
+
+
+#File ./files:
+./conftest.py
+./src/autocoder/error_handler.py
+./src/autocoder/task_interpreter.py
+./src/autocoder/test_runner.py
+./src/autocoder/state.py
+./src/autocoder/code_modifier.py
+./src/autocoder/nodes/tools/__init__.py
+./src/autocoder/nodes/tools/directory_checker.py
+./src/autocoder/nodes/__init__.py
+./src/autocoder/file_listing/__init__.py
+./src/autocoder/file_listing/file_listing_node.py
+./src/autocoder/__init__.py
+./src/autocoder/autocoder.py
+./src/autocoder/claude_api_wrapper.py
+./src/autocoder/context_builder.py
+./src/autocoder/file_manager.py
+./src/autocoder/langgraph_workflow.py
+./tests/test_context_builder.py
+./tests/test_file_listing_node.py
+./.env.example
+./files
+./requirements.txt
+
+
+
+
+
+
+
+#File ./requirements.txt:
+python-dotenv==1.0.1
+requests==2.32.3
+openai==1.36
+anthropic==0.31.2
+langgraph==0.1.9
+pytest==8.2.2
+astor==0.8.1
+pathspec==0.12.1
+
 
 
 

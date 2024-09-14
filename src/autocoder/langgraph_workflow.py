@@ -1,11 +1,15 @@
 import logging
-from typing import Annotated, TypedDict
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
+from typing import Dict, Any
+from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
 from .state import State
 from .nodes.tools.directory_checker import check_autocoder_dir
+from .nodes.interpret_task import interpret_task
+from .nodes.build_context import build_context
+from .nodes.generate_modifications import generate_modifications
+from .nodes.apply_modifications import apply_modifications
+from .nodes.run_tests import run_tests
 
 logger = logging.getLogger(__name__)
 
@@ -22,75 +26,43 @@ class LangGraphWorkflow:
         self.graph = self._build_graph()
         self.memory = MemorySaver()
 
-    def _build_graph(self):
-        graph = StateGraph(State)
+    def _build_graph(self) -> StateGraph:
+        workflow = StateGraph(State)
 
-        # Add nodes
-        graph.add_node("check_autocoder_dir", check_autocoder_dir)
-        graph.add_node("interpret_task", self._interpret_task)
-        graph.add_node("build_context", self._build_context)
-        graph.add_node("generate_modifications", self._generate_modifications)
-        graph.add_node("apply_modifications", self._apply_modifications)
-        graph.add_node("run_tests", self._run_tests)
+        # Define nodes
+        workflow.add_node("check_autocoder_dir", check_autocoder_dir)
+        workflow.add_node("interpret_task", interpret_task)
+        workflow.add_node("build_context", build_context)
+        workflow.add_node("generate_modifications", generate_modifications)
+        workflow.add_node("apply_modifications", apply_modifications)
+        workflow.add_node("run_tests", run_tests)
 
         # Define edges
-        graph.add_edge(START, "check_autocoder_dir")
-        graph.add_conditional_edges(
+        workflow.set_entry_point("check_autocoder_dir")
+        workflow.add_conditional_edges(
             "check_autocoder_dir",
             self._check_initialization,
             {True: "interpret_task", False: END}
         )
-        graph.add_edge("interpret_task", "build_context")
-        graph.add_edge("build_context", "generate_modifications")
-        graph.add_edge("generate_modifications", "apply_modifications")
-        graph.add_edge("apply_modifications", "run_tests")
-        graph.add_conditional_edges(
+        workflow.add_edge("interpret_task", "build_context")
+        workflow.add_edge("build_context", "generate_modifications")
+        workflow.add_edge("generate_modifications", "apply_modifications")
+        workflow.add_edge("apply_modifications", "run_tests")
+        workflow.add_conditional_edges(
             "run_tests",
             self._handle_test_results,
             {True: END, False: "generate_modifications"}
         )
 
-        return graph.compile(checkpointer=self.memory)
+        return workflow.compile()
 
-    def _check_initialization(self, state):
+    def _check_initialization(self, state: State) -> bool:
         return state.get("autocoder_dir_exists", False) and self._check_file_listing_success(state)
 
-    def _check_file_listing_success(self, state):
+    def _check_file_listing_success(self, state: State) -> bool:
         return state.get("project_files") is not None and state.get("excluded_files") is not None
 
-    def _interpret_task(self, state: State):
-        interpreted_task = self.task_interpreter.interpret_task(state["messages"][-1].content)
-        logger.info(f"Task interpreted: {interpreted_task['task_type']}")
-        return {"interpreted_task": interpreted_task}
-
-    def _build_context(self, state: State):
-        files = self.file_manager.list_files()
-        file_contents = {f: self.file_manager.read_file(f) for f in files}
-        context = self.context_builder.build_context(file_contents)
-        logger.info("Context built successfully")
-        return {"files": file_contents, "context": context}
-
-    def _generate_modifications(self, state: State):
-        task_prompt = self.task_interpreter.get_prompt_for_task(state["interpreted_task"])
-        full_prompt = f"Context:\n{state['context']}\n\nTask:\n{task_prompt}"
-        modifications = self.claude_api.generate_response(full_prompt)
-        logger.info("Received response from Claude API")
-        return {"modifications": modifications}
-
-    def _apply_modifications(self, state: State):
-        for file in state["interpreted_task"]["affected_files"]:
-            if file in state["files"]:
-                original_code = state["files"][file]
-                modified_code = self.code_modifier.modify_code(original_code, state["modifications"])
-                self.file_manager.write_file(file, modified_code)
-                logger.info(f"Modified file: {file}")
-        return {}
-
-    def _run_tests(self, state: State):
-        success, test_result = self.test_runner.run_tests()
-        return {"test_results": test_result}
-
-    def _handle_test_results(self, state: State):
+    def _handle_test_results(self, state: State) -> bool:
         if "success" in state["test_results"]:
             logger.info("Task completed successfully")
             return True
@@ -99,14 +71,19 @@ class LangGraphWorkflow:
             logger.warning("Tests failed. See error report for details.")
             return False
 
-    def execute(self, task_description, config=None):
+    def execute(self, task_description: str, config: Dict[str, Any] = None) -> str:
         try:
-            initial_state = {
-                "messages": [("user", task_description)],
-                "project_root": self.file_manager.project_root,
-                "claude_api": self.claude_api,
-                "autocoder_dir_exists": False  # Initialize this in the state
-            }
+            initial_state = State(
+                messages=[("user", task_description)],
+                project_root=self.file_manager.project_root,
+                claude_api=self.claude_api,
+                autocoder_dir_exists=False,
+                files={},
+                context="",
+                interpreted_task={},
+                modifications="",
+                test_results=""
+            )
             for event in self.graph.stream(initial_state, config):
                 if "messages" in event:
                     print(event["messages"][-1])
