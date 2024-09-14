@@ -51,25 +51,26 @@ class LangGraphWorkflow:
         # Define nodes
         workflow.add_node("analyze_file_listing", analyze_file_listing_node)
         workflow.add_node("llm_analyze", create_llm_analyze_node(self.claude_api))
-        workflow.add_node("error_handling", error_handling_node)
 
         # Define edges
         workflow.set_entry_point("analyze_file_listing")
         workflow.add_edge("analyze_file_listing", "llm_analyze")
+
+        # Add a conditional edge to end the workflow
         workflow.add_conditional_edges(
             "llm_analyze",
             self._handle_analysis_result,
-            {True: END, False: "error_handling"}
+            {
+                True: END,
+                False: "analyze_file_listing"  # Loop back if analysis is not complete
+            }
         )
-        workflow.add_edge("error_handling", END)
 
         return workflow.compile()
 
     def _handle_analysis_result(self, state: State) -> bool:
-        return 'analysis_result' in state
-
-    def _handle_task_execution_result(self, state: State) -> bool:  # New method name
-        return state.get("task_completed", False)
+        # Check if we have an analysis result and it's not empty
+        return 'analysis_result' in state and bool(state['analysis_result'])
 
     def execute_analysis(self, config: Dict[str, Any] = None) -> str:
         try:
@@ -108,6 +109,7 @@ class LangGraphWorkflow:
                     logger.info("Received analysis result")
                     print("LLM Analysis of the Project:")
                     print(event["analysis_result"])
+                    return "Analysis completed."
 
             if "analysis_result" in state:
                 logger.info("Final analysis result found")
@@ -121,6 +123,44 @@ class LangGraphWorkflow:
         except Exception as e:
             logger.exception(f"An unexpected error occurred during analysis: {str(e)}")
             return f"An unexpected error occurred during analysis: {str(e)}"
+
+    def _handle_task_execution_result(self, state: State) -> bool:
+        """
+        Determines whether the task execution is complete based on the current state.
+
+        Args:
+        state (State): The current state of the workflow.
+
+        Returns:
+        bool: True if the task is completed, False otherwise.
+        """
+        logger.debug(f"Handling task execution result. Current state: {state}")
+
+        # Check if there's an error in the state
+        if state.get("error"):
+            logger.error(f"Error encountered during task execution: {state['error']}")
+            return False
+
+        # Check if the task is marked as completed
+        if state.get("task_completed"):
+            logger.info("Task marked as completed.")
+            return True
+
+        # Check if we have a final result or output
+        if state.get("final_result") or state.get("output"):
+            logger.info("Final result or output found. Considering task as completed.")
+            return True
+
+        # Check if we've reached a maximum number of iterations
+        max_iterations = state.get("max_iterations", 5)  # Default to 5 if not set
+        current_iteration = state.get("current_iteration", 0)
+        if current_iteration >= max_iterations:
+            logger.warning(f"Reached maximum iterations ({max_iterations}). Ending task execution.")
+            return True
+
+        # If none of the above conditions are met, continue the task execution
+        logger.info("Task execution continuing.")
+        return False
 
     def execute(self, task_description: str, config: Dict[str, Any] = None) -> str:
         try:
