@@ -16,7 +16,6 @@ from .nodes.llm_analyze_node import create_llm_analyze_node
 
 logger = logging.getLogger(__name__)
 
-
 class LangGraphWorkflow:
     def __init__(self, api_key: str):
         self.claude_api = ClaudeAPIWrapper(api_key).client
@@ -76,16 +75,27 @@ class LangGraphWorkflow:
                 project_root=config.get("project_root", ""),
                 context="",
                 analysis_result="",
-                error=None
+                error=None,
+                iteration_count=0  # Add an iteration counter
             )
             logger.info(f"Initial state: {initial_state}")
 
-            # Set a higher recursion limit
+            # Set a higher recursion limit and maximum iterations
             config = config or {}
-            config['recursion_limit'] = 50  # Adjust this value as needed
+            config['recursion_limit'] = 100  # Increased from 50
+            max_iterations = config.get('max_iterations', 10)  # Add a maximum iteration limit
 
             for event in self.analyze_graph.stream(initial_state, config):
                 logger.info(f"Event received: {event}")
+
+                # Increment the iteration count
+                event['iteration_count'] = event.get('iteration_count', 0) + 1
+
+                # Check if we've reached the maximum iterations
+                if event['iteration_count'] >= max_iterations:
+                    logger.warning(f"Reached maximum iterations ({max_iterations}). Ending analysis.")
+                    return "Analysis completed (maximum iterations reached)."
+
                 if "error" in event:
                     logger.error(f"Error in event: {event['error']}")
                     return f"An error occurred: {event['error']}"
@@ -115,8 +125,8 @@ class LangGraphWorkflow:
                     print(event["analysis_result"])
                     return "Analysis completed."
 
-            logger.warning("No analysis result was generated")
-            return "Analysis completed with no result."
+                logger.warning("No analysis result was generated")
+                return "Analysis completed with no result."
         except Exception as e:
             logger.exception(f"An unexpected error occurred during analysis: {str(e)}")
             return f"An unexpected error occurred during analysis: {str(e)}"
