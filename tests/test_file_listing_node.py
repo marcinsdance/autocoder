@@ -1,6 +1,11 @@
 import os
+import logging
 from autocoder.file_listing.file_listing_node import FileListingNode
 from autocoder.claude_api_wrapper import ClaudeAPIWrapper
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def test_file_listing_node():
     project_root = os.getcwd()  # Or specify the path to your project

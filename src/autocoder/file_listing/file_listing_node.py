@@ -12,7 +12,7 @@ class FileListingNode:
 
     def process(self, state):
         try:
-            ignore_spec = self.read_gitignore()
+            ignore_spec = self.get_ignore_spec()
             project_files = self.list_project_files(ignore_spec)
             state['project_files'] = project_files
             state['excluded_files'] = [str(pat) for pat in ignore_spec.patterns]
@@ -26,16 +26,38 @@ class FileListingNode:
             state['error'] = str(e)
             return state
 
-    def read_gitignore(self):
+    def get_ignore_spec(self):
+        patterns = []
+        # Read .gitignore
         gitignore_path = self.project_root / '.gitignore'
         if gitignore_path.exists():
             with gitignore_path.open('r') as f:
                 gitignore_content = f.read()
-            spec = pathspec.PathSpec.from_lines('gitwildmatch', gitignore_content.splitlines())
+            patterns.extend(gitignore_content.splitlines())
             logger.info("Read .gitignore and compiled ignore patterns.")
         else:
             logger.warning(".gitignore file not found.")
-            spec = pathspec.PathSpec.from_lines('gitwildmatch', [])
+
+        # Add default ignore patterns
+        default_ignores = [
+            '.git/',
+            '.hg/',
+            '.svn/',
+            '.idea/',
+            '*.egg-info/',
+            '__pycache__/',
+            '.DS_Store',
+            '*.pyc',
+            '.venv/',
+            'env/',
+            'build/',
+            'dist/',
+            'node_modules/',
+            '*.log',
+            '*.tmp',
+        ]
+        patterns.extend(default_ignores)
+        spec = pathspec.PathSpec.from_lines('gitwildmatch', patterns)
         return spec
 
     def list_project_files(self, ignore_spec):
@@ -45,8 +67,14 @@ class FileListingNode:
             root_relative = os.path.relpath(root, self.project_root)
             if root_relative == '.':
                 root_relative = ''
-            # Exclude directories matching ignore patterns
-            dirs[:] = [d for d in dirs if not ignore_spec.match_file(os.path.join(root_relative, d))]
+            # Prepare directory paths for matching
+            dirs_to_remove = []
+            for d in dirs:
+                dir_path = os.path.join(root_relative, d)
+                if ignore_spec.match_file(dir_path + '/'):
+                    dirs_to_remove.append(d)
+            for d in dirs_to_remove:
+                dirs.remove(d)
             for file in files:
                 rel_path = os.path.join(root_relative, file)
                 if not ignore_spec.match_file(rel_path):
