@@ -15,46 +15,61 @@ sys.path.insert(0, str(src_path))
 #File ./src/autocoder/error_handler.py:
 import traceback
 import logging
+from typing import Union, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-
 class ErrorHandler:
-    def __init__(self):
-        pass
-
-    def handle_error(self, error):
+    @staticmethod
+    def handle_error(error: Union[str, Exception], context: Dict[str, Any] = None) -> Dict[str, Any]:
         if isinstance(error, str):
-            # If error is already a string (e.g., from TestRunner)
             error_message = error
         else:
-            # If error is an exception
             error_message = str(error)
 
         logger.error(f"An error occurred: {error_message}")
 
-        # Get the full traceback
-        tb = traceback.extract_tb(error.__traceback__) if hasattr(error, '__traceback__') else []
-
-        # Format the error report
-        error_report = f"Error: {error_message}\n\n"
-        error_report += "Traceback:\n"
-        for frame in tb:
-            error_report += f"  File '{frame.filename}', line {frame.lineno}, in {frame.name}\n"
-            error_report += f"    {frame.line}\n"
-
-        # Provide some general advice
-        error_report += "\nSuggestions:\n"
-        error_report += "1. Check the traceback above to identify where the error occurred.\n"
-        error_report += "2. Review any recent changes to the affected files.\n"
-        error_report += "3. Ensure all necessary dependencies are installed and up to date.\n"
-        error_report += "4. If the error persists, consider reverting recent changes or seeking further assistance.\n"
+        error_report = {
+            "error_message": error_message,
+            "traceback": ErrorHandler.get_traceback(error),
+            "context": context or {},
+            "suggestions": ErrorHandler.get_suggestions(error_message)
+        }
 
         return error_report
 
-    def log_error(self, error):
-        logger.error(f"An error occurred: {str(error)}")
-        logger.error(traceback.format_exc())
+    @staticmethod
+    def get_traceback(error: Union[str, Exception]) -> str:
+        if isinstance(error, Exception):
+            return "".join(traceback.format_exception(type(error), error, error.__traceback__))
+        return "No traceback available for string errors."
+
+    @staticmethod
+    def get_suggestions(error_message: str) -> list:
+        # This method can be expanded with more specific suggestions based on error types
+        suggestions = [
+            "Check the error message and traceback for details on where the error occurred.",
+            "Review any recent changes to the affected components.",
+            "Ensure all necessary dependencies are installed and up to date.",
+            "If the error persists, consider reverting recent changes or seeking further assistance."
+        ]
+        return suggestions
+
+    @staticmethod
+    def log_error(error: Union[str, Exception], context: Dict[str, Any] = None):
+        error_report = ErrorHandler.handle_error(error, context)
+        logger.error(f"Error Report: {error_report}")
+
+    @staticmethod
+    def wrap_node(node_func):
+        def wrapped_node(state: Dict[str, Any]) -> Dict[str, Any]:
+            try:
+                return node_func(state)
+            except Exception as e:
+                error_report = ErrorHandler.handle_error(e, context={"node": node_func.__name__, "state": state})
+                state["error"] = error_report
+                return state
+        return wrapped_node
 
 
 
@@ -63,9 +78,12 @@ class ErrorHandler:
 
 
 #File ./src/autocoder/task_interpreter.py:
-import re
+from typing import Dict
 from enum import Enum
-
+import re
+from langchain_core.tools import Tool
+from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel, Field
 
 class TaskType(Enum):
     ADD_FEATURE = "add_feature"
@@ -76,62 +94,46 @@ class TaskType(Enum):
     DOCUMENT = "document"
     UNKNOWN = "unknown"
 
+class TaskInterpreterArgs(BaseModel):
+    task_description: str = Field(..., description="Description of the task to interpret")
 
-class TaskInterpreter:
-    def __init__(self):
-        self.task_type_keywords = {
-            TaskType.ADD_FEATURE: ["add", "create", "implement", "new feature"],
-            TaskType.FIX_BUG: ["fix", "bug", "issue", "problem", "error"],
-            TaskType.REFACTOR: ["refactor", "restructure", "reorganize"],
-            TaskType.OPTIMIZE: ["optimize", "improve performance", "speed up"],
-            TaskType.TEST: ["test", "unit test", "integration test"],
-            TaskType.DOCUMENT: ["document", "add comments", "explain"]
-        }
+def task_interpreter(state: Dict, args: TaskInterpreterArgs) -> Dict:
+    task_type_keywords = {
+        TaskType.ADD_FEATURE: ["add", "create", "implement", "new feature"],
+        TaskType.FIX_BUG: ["fix", "bug", "issue", "problem", "error"],
+        TaskType.REFACTOR: ["refactor", "restructure", "reorganize"],
+        TaskType.OPTIMIZE: ["optimize", "improve performance", "speed up"],
+        TaskType.TEST: ["test", "unit test", "integration test"],
+        TaskType.DOCUMENT: ["document", "add comments", "explain"]
+    }
 
-    def interpret_task(self, task_description):
-        task_type = self._determine_task_type(task_description)
-        affected_files = self._identify_affected_files(task_description)
-        subtasks = self._break_into_subtasks(task_description)
+    task_type = TaskType.UNKNOWN
+    for t_type, keywords in task_type_keywords.items():
+        if any(keyword in args.task_description.lower() for keyword in keywords):
+            task_type = t_type
+            break
 
-        return {
-            "original_description": task_description,
-            "task_type": task_type.value,
-            "affected_files": affected_files,
-            "subtasks": subtasks
-        }
+    file_pattern = r'\b[\w-]+\.(py|js|html|css|md)\b'
+    affected_files = list(set(re.findall(file_pattern, args.task_description)))
 
-    def _determine_task_type(self, task_description):
-        task_description_lower = task_description.lower()
-        for task_type, keywords in self.task_type_keywords.items():
-            if any(keyword in task_description_lower for keyword in keywords):
-                return task_type
-        return TaskType.UNKNOWN
+    subtasks = [subtask.strip() for subtask in args.task_description.split(". ") if subtask.strip()]
 
-    def _identify_affected_files(self, task_description):
-        # Simple regex to find file names (adjust as needed)
-        file_pattern = r'\b[\w-]+\.(py|js|html|css|md)\b'
-        return list(set(re.findall(file_pattern, task_description)))
+    return {
+        "task_type": task_type.value,
+        "affected_files": affected_files,
+        "subtasks": subtasks
+    }
 
-    def _break_into_subtasks(self, task_description):
-        # Simple subtask breakdown (can be improved with NLP techniques)
-        subtasks = task_description.split(". ")
-        return [subtask.strip() for subtask in subtasks if subtask.strip()]
+task_interpreter_tools = [
+    Tool.from_function(
+        func=task_interpreter,
+        name="task_interpreter",
+        description="Interpret a task description",
+        args_schema=TaskInterpreterArgs
+    )
+]
 
-    def get_prompt_for_task(self, interpreted_task):
-        task_type = interpreted_task['task_type']
-        affected_files = ", ".join(interpreted_task['affected_files']) if interpreted_task[
-            'affected_files'] else "not specified"
-
-        prompt = f"Task Type: {task_type}\n"
-        prompt += f"Affected Files: {affected_files}\n"
-        prompt += "Original Description: " + interpreted_task['original_description'] + "\n"
-        prompt += "Subtasks:\n"
-        for i, subtask in enumerate(interpreted_task['subtasks'], 1):
-            prompt += f"{i}. {subtask}\n"
-
-        prompt += "\nBased on this information, please provide a detailed plan to accomplish this task. Include specific code modifications or additions where applicable."
-
-        return prompt
+task_interpreter_node = ToolNode(task_interpreter_tools)
 
 
 
@@ -141,26 +143,34 @@ class TaskInterpreter:
 
 #File ./src/autocoder/test_runner.py:
 import subprocess
-import os
+from typing import Dict
+from langchain_core.tools import Tool
+from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel
 
-class TestRunner:
-    def __init__(self):
-        pass
+class TestRunnerArgs(BaseModel):
+    pass  # No arguments needed for test runner
 
-    def run_tests(self):
-        try:
-            # Run pytest in the current directory
-            result = subprocess.run(['pytest'], capture_output=True, text=True)
+def test_runner(state: Dict, args: TestRunnerArgs) -> Dict:
+    try:
+        result = subprocess.run(['pytest'], capture_output=True, text=True)
+        if result.returncode == 0:
+            return {"success": True, "details": "All tests passed"}
+        else:
+            return {"success": False, "details": result.stderr}
+    except Exception as e:
+        return {"success": False, "details": f"Error running tests: {str(e)}"}
 
-            # Check if tests passed
-            if result.returncode == 0:
-                return True, "All tests passed"
-            else:
-                # If tests failed, return the error output
-                return False, result.stderr
+test_runner_tools = [
+    Tool.from_function(
+        func=test_runner,
+        name="test_runner",
+        description="Run tests for the project",
+        args_schema=TestRunnerArgs
+    )
+]
 
-        except Exception as e:
-            return False, f"Error running tests: {str(e)}"
+test_runner_node = ToolNode(test_runner_tools)
 
 
 
@@ -169,16 +179,20 @@ class TestRunner:
 
 
 #File ./src/autocoder/state.py:
-from typing import Annotated, TypedDict
+from typing import Annotated, TypedDict, List, Dict
 from langgraph.graph.message import add_messages
+from langchain_core.messages import BaseMessage
 
 class State(TypedDict):
-    messages: Annotated[list, add_messages]
-    files: dict
+    messages: Annotated[List[BaseMessage], add_messages]
+    files: Dict[str, str]
     context: str
-    interpreted_task: dict
+    interpreted_task: Dict[str, any]
     modifications: str
     test_results: str
+    project_root: str
+    claude_api: any  # You might want to create a specific type for this
+    autocoder_dir_exists: bool
 
 
 
@@ -187,50 +201,45 @@ class State(TypedDict):
 
 
 #File ./src/autocoder/code_modifier.py:
-import re
 import ast
 import astor
+from typing import Dict
+from langchain_core.tools import Tool
+from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel, Field
 
+class CodeModifierArgs(BaseModel):
+    original_code: str = Field(..., description="The original code to be modified")
+    modifications: str = Field(..., description="Description of modifications to be made")
 
-class CodeModifier:
-    def __init__(self):
-        pass
+def code_modifier(state: Dict, args: CodeModifierArgs) -> Dict:
+    try:
+        tree = ast.parse(args.original_code)
+        modified_tree = apply_modifications(tree, args.modifications)
+        modified_code = astor.to_source(modified_tree)
+        return {"modified_code": modified_code}
+    except SyntaxError:
+        return {"modified_code": simple_modify(args.original_code, args.modifications)}
 
-    def modify_code(self, original_code, modifications):
-        try:
-            # Parse the original code into an AST
-            tree = ast.parse(original_code)
+def apply_modifications(tree, modifications):
+    # TODO: Implement more sophisticated AST transformations here
+    new_node = ast.Expr(ast.Str(f"# Modified: {modifications}"))
+    tree.body.insert(0, new_node)
+    return tree
 
-            # Apply modifications
-            modified_tree = self.apply_modifications(tree, modifications)
+def simple_modify(original_code, modifications):
+    return f"# Modified: {modifications}\n\n{original_code}"
 
-            # Generate the modified code
-            modified_code = astor.to_source(modified_tree)
+code_modifier_tools = [
+    Tool.from_function(
+        func=code_modifier,
+        name="code_modifier",
+        description="Modify code based on given instructions",
+        args_schema=CodeModifierArgs
+    )
+]
 
-            return modified_code
-        except SyntaxError:
-            # If parsing fails, fall back to simple string replacement
-            return self.simple_modify(original_code, modifications)
-
-    def apply_modifications(self, tree, modifications):
-        # TODO: Implement more sophisticated AST transformations here
-        # For now, we'll just add a comment at the top of the file
-        new_node = ast.Expr(ast.Str(f"# Modified by AutoCoder: {modifications}"))
-        tree.body.insert(0, new_node)
-        return tree
-
-    def simple_modify(self, original_code, modifications):
-        # Simple string-based modifications
-        # This is a fallback method and should be improved
-        modified_code = f"# Modified by AutoCoder: {modifications}\n\n{original_code}"
-
-        # Apply simple replacements based on the modifications string
-        # This is a very basic implementation and should be enhanced
-        replacements = re.findall(r'replace "([^"]*)" with "([^"]*)"', modifications)
-        for old, new in replacements:
-            modified_code = modified_code.replace(old, new)
-
-        return modified_code
+code_modifier_node = ToolNode(code_modifier_tools)
 
 
 
@@ -306,6 +315,143 @@ def init_autocoder():
 
 
 #File ./src/autocoder/nodes/__init__.py:
+
+
+
+
+
+
+
+#File ./src/autocoder/nodes/interpret_task.py:
+from ..state import State
+from ..task_interpreter import TaskInterpreter
+from ..error_handler import ErrorHandler
+
+@ErrorHandler.wrap_node
+def interpret_task(state: State) -> State:
+    task_interpreter = TaskInterpreter()
+    task_description = state["messages"][-1].content
+    interpreted_task = task_interpreter.interpret_task(task_description)
+    state["interpreted_task"] = interpreted_task
+    return state
+
+
+
+
+
+
+
+#File ./src/autocoder/nodes/build_context.py:
+from ..state import State
+from ..context_builder import ContextBuilder
+from ..file_manager import FileManager
+from ..error_handler import ErrorHandler
+
+@ErrorHandler.wrap_node
+def build_context(state: State) -> State:
+    file_manager = FileManager(state["project_root"])
+    context_builder = ContextBuilder()
+
+    files = file_manager.get_file_contents()
+    context = context_builder.build_context(files)
+
+    state["files"] = files
+    state["context"] = context
+
+    return state
+
+
+
+
+
+
+
+#File ./src/autocoder/nodes/generate_modifications.py:
+from ..state import State
+from ..task_interpreter import TaskInterpreter
+from ..error_handler import ErrorHandler
+
+
+@ErrorHandler.wrap_node
+def generate_modifications(state: State) -> State:
+    task_interpreter = TaskInterpreter()
+    claude_api = state["claude_api"]
+
+    task_prompt = task_interpreter.get_prompt_for_task(state["interpreted_task"])
+    full_prompt = f"Context:\n{state['context']}\n\nTask:\n{task_prompt}"
+
+    modifications = claude_api.generate_response(full_prompt)
+
+    state["modifications"] = modifications
+
+    return state
+
+
+
+
+
+
+
+#File ./src/autocoder/nodes/apply_modifications.py:
+from ..state import State
+from ..code_modifier import CodeModifier
+from ..file_manager import FileManager
+from ..error_handler import ErrorHandler
+
+@ErrorHandler.wrap_node
+def apply_modifications(state: State) -> State:
+    code_modifier = CodeModifier()
+    file_manager = FileManager(state["project_root"])
+
+    for file in state["interpreted_task"]["affected_files"]:
+        if file in state["files"]:
+            original_code = state["files"][file]
+            modified_code = code_modifier.modify_code(original_code, state["modifications"])
+            file_manager.write_file(file, modified_code)
+            state["files"][file] = modified_code
+
+    return state
+
+
+
+
+
+
+
+#File ./src/autocoder/nodes/run_tests.py:
+from ..state import State
+from ..test_runner import TestRunner
+from ..error_handler import ErrorHandler
+
+
+@ErrorHandler.wrap_node
+def run_tests(state: State) -> State:
+    test_runner = TestRunner()
+
+    success, test_result = test_runner.run_tests()
+
+    state["test_results"] = {
+        "success": success,
+        "details": test_result
+    }
+
+    return state
+
+
+
+
+
+
+
+#File ./src/autocoder/nodes/check_autocoder_dir.py:
+from ..state import State
+from ..nodes.tools.directory_checker import check_autocoder_dir as check_dir
+from ..error_handler import ErrorHandler
+
+@ErrorHandler.wrap_node
+def check_autocoder_dir(state: State) -> State:
+    state["autocoder_dir_exists"] = check_dir()
+    return state
 
 
 
@@ -428,11 +574,11 @@ class FileListingNode:
 #File ./src/autocoder/__init__.py:
 from .autocoder import main
 
-from .file_manager import FileManager
-from .context_builder import ContextBuilder
-from .task_interpreter import TaskInterpreter
-from .code_modifier import CodeModifier
-from .test_runner import TestRunner
+from .file_manager import file_manager_node
+from .context_builder import context_builder_node
+from .task_interpreter import task_interpreter_node
+from .code_modifier import code_modifier_node
+from .test_runner import test_runner_node
 from .error_handler import ErrorHandler
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
@@ -441,11 +587,11 @@ from .file_listing.file_listing_node import FileListingNode
 
 __all__ = [
     'main',
-    'FileManager',
-    'ContextBuilder',
-    'TaskInterpreter',
-    'CodeModifier',
-    'TestRunner',
+    'file_manager_node',
+    'context_builder_node',
+    'task_interpreter_node',
+    'code_modifier_node',
+    'test_runner_node',
     'ErrorHandler',
     'ClaudeAPIWrapper',
     'LangGraphWorkflow',
@@ -466,22 +612,17 @@ import argparse
 import logging
 import os
 from dotenv import load_dotenv
+from typing import Dict, Any
 
-from .file_manager import FileManager
-from .context_builder import ContextBuilder
-from .task_interpreter import TaskInterpreter
-from .code_modifier import CodeModifier
-from .test_runner import TestRunner
-from .error_handler import ErrorHandler
-from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
+from .claude_api_wrapper import ClaudeAPIWrapper
 from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder, \
     display_usage_message
 from .file_listing.file_listing_node import FileListingNode
+from .error_handler import ErrorHandler
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 def initialize_autocoder():
     logger.info("Starting Autocoder initialization...")
@@ -495,18 +636,16 @@ def initialize_autocoder():
     logger.info("Autocoder initialization complete.")
     return True
 
-
 def initialize_file_listing():
     project_root = os.getcwd()
     logger.debug(f"Current working directory: {project_root}")
 
     # Load environment variables
     load_dotenv()
-    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY') or os.getenv('OPENAI_API_KEY')
+    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
     if not api_key:
         logger.error("No API key found. Cannot proceed with file listing.")
-        return {
-            'error': "No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file."}
+        return {'error': "No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file."}
 
     try:
         logger.debug("Initializing Claude API wrapper...")
@@ -528,6 +667,27 @@ def initialize_file_listing():
     logger.info("File listing process completed successfully.")
     return updated_state
 
+def stream_execution(workflow: LangGraphWorkflow, task_description: str, config: Dict[str, Any]):
+    try:
+        for event in workflow.graph.stream({
+            "messages": [{"role": "user", "content": task_description}],
+            "project_root": config.get("project_root", ""),
+            "files": {},
+            "context": "",
+            "interpreted_task": {},
+            "modifications": "",
+            "test_results": {"success": False, "details": ""}
+        }, config):
+            if "error" in event:
+                yield f"An error occurred: {event['error']['error_message']}"
+            elif "messages" in event:
+                yield f"Output: {event['messages'][-1]['content']}"
+            else:
+                yield f"Event: {event}"
+    except Exception as e:
+        error_report = ErrorHandler.handle_error(e)
+        ErrorHandler.log_error(e)
+        yield f"An unexpected error occurred: {error_report['error_message']}"
 
 def execute_task(task_description):
     if not check_autocoder_dir():
@@ -537,47 +697,26 @@ def execute_task(task_description):
 
     # Load environment variables
     load_dotenv()
-    print("Environment variables:", os.environ)
 
     # Get API key directly from environment
-    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY') or os.getenv('OPENAI_API_KEY')
+    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
     if not api_key:
         logger.error("No API key found. Cannot proceed with task execution.")
-        print(
-            "Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file.")
+        print("Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file.")
         return
 
     try:
-        claude_api = ClaudeAPIWrapper(api_key)
+        # Initialize LangGraph workflow
+        workflow = LangGraphWorkflow(api_key)
+
+        # Execute workflow and stream results
+        print("Executing task. Streaming output:")
+        for output in stream_execution(workflow, task_description, {"project_root": os.getcwd()}):
+            print(output)
+
     except Exception as e:
-        logger.error(f"Failed to initialize Claude API: {str(e)}")
-        print(f"Error: Failed to initialize Claude API: {str(e)}")
-        return
-
-    # Initialize components
-    project_root = os.getcwd()
-    file_manager = FileManager(project_root)
-    context_builder = ContextBuilder()
-    task_interpreter = TaskInterpreter()
-    code_modifier = CodeModifier()
-    test_runner = TestRunner()
-    error_handler = ErrorHandler()
-
-    # Initialize LangGraph workflow
-    workflow = LangGraphWorkflow(
-        file_manager, context_builder, task_interpreter,
-        code_modifier, test_runner, error_handler, claude_api
-    )
-
-    # Execute workflow
-    result = workflow.execute(task_description)
-
-    print(result)
-
-    # Create debug context if DEBUG mode is enabled
-    if file_manager.is_debug_mode():
-        file_manager.create_debug_context()
-
+        logger.error(f"Failed to execute task: {str(e)}")
+        print(f"Error: Failed to execute task: {str(e)}")
 
 def main():
     parser = argparse.ArgumentParser(description="Claude Automated Coding")
@@ -613,7 +752,6 @@ def main():
         print(f"Unknown command: {args.command}")
         display_usage_message()
 
-
 if __name__ == "__main__":
     main()
 
@@ -625,28 +763,44 @@ if __name__ == "__main__":
 
 #File ./src/autocoder/claude_api_wrapper.py:
 from anthropic import Anthropic
+from typing import Dict, Any, List
+from langchain_core.tools import Tool
+from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel, Field
+
+class GenerateResponseArgs(BaseModel):
+    messages: List[Dict[str, str]] = Field(..., description="List of messages in the conversation")
+    max_tokens: int = Field(1000, description="Maximum number of tokens in the response")
+    system_prompt: str = Field("You are a helpful AI assistant.", description="System prompt to guide the model's behavior")
 
 class ClaudeAPIWrapper:
-    def __init__(self, api_key):
+    def __init__(self, api_key: str):
         self.client = Anthropic(api_key=api_key)
-        self.model = "claude-3-opus-20240229"  # Using the latest Claude 3 model
+        self.model = "claude-3-opus-20240229"
 
-    def generate_response(self, prompt):
+    def generate_response(self, state: Dict[str, Any], args: GenerateResponseArgs) -> Dict[str, Any]:
         try:
-            message = self.client.messages.create(
-                model=self.model,
-                max_tokens=1000,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            return message.content[0].text
-        except Exception as e:
-            print(f"An error occurred: {str(e)}")
-            return None
+            messages = [{"role": "system", "content": args.system_prompt}] + args.messages
 
-    def format_prompt(self, system_prompt, user_prompt):
-        return f"{system_prompt}\n\n{user_prompt}"
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=args.max_tokens,
+                messages=messages
+            )
+            return {"response": response.content[0].text}
+        except Exception as e:
+            return {"error": f"An error occurred: {str(e)}"}
+
+claude_api_tools = [
+    Tool.from_function(
+        func=ClaudeAPIWrapper.generate_response,
+        name="generate_response",
+        description="Generate a response using the Claude API",
+        args_schema=GenerateResponseArgs
+    )
+]
+
+claude_api_node = ToolNode(claude_api_tools)
 
 
 
@@ -655,50 +809,32 @@ class ClaudeAPIWrapper:
 
 
 #File ./src/autocoder/context_builder.py:
-class ContextBuilder:
-    def __init__(self):
-        self.context = {}
+from typing import Dict, List
+from langchain_core.tools import Tool
+from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel, Field
+from .file_manager import read_file, ReadFileArgs
 
-    def build_context(self, file_manager):
-        context = file_manager.get_context()
-        self.context['built_context'] = context
-        return context
+class BuildContextArgs(BaseModel):
+    files: List[str] = Field(..., description="List of file paths to build context from")
 
-    def get_full_context(self):
-        return self.context
+def build_context(state: Dict, args: BuildContextArgs) -> Dict:
+    context = ""
+    for file in args.files:
+        content = read_file(state, ReadFileArgs(file_path=file))["content"]
+        context += f"#File {file}:\n{content}\n\n"
+    return {"context": context}
 
-    def add_context(self, key, value):
-        self.context[key] = value
+context_builder_tools = [
+    Tool.from_function(
+        func=build_context,
+        name="build_context",
+        description="Build context from a list of files",
+        args_schema=BuildContextArgs
+    )
+]
 
-    def get_context(self, key):
-        if key in self.context:
-            return self.context[key]
-        else:
-            raise KeyError(f"Key '{key}' not found in context")
-
-    def update_context(self, key, value):
-        if key in self.context:
-            self.context[key] = value
-        else:
-            raise KeyError(f"Key '{key}' not found in context")
-
-    def remove_context(self, key):
-        if key in self.context:
-            del self.context[key]
-        else:
-            raise KeyError(f"Key '{key}' not found in context")
-
-    def clear_context(self):
-        self.context.clear()
-
-    def context_exists(self, key):
-        return key in self.context
-
-    def get_size(self):
-        return len(self.context)
-
-    def add_multiple_context(self, context_dict):
-        self.context.update(context_dict)
+context_builder_node = ToolNode(context_builder_tools)
 
 
 
@@ -708,59 +844,59 @@ class ContextBuilder:
 
 #File ./src/autocoder/file_manager.py:
 import os
-import fnmatch
-from typing import List, Dict
+from typing import Dict, List
+from langchain_core.tools import Tool
+from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel, Field
 
-class FileManager:
-    def __init__(self, project_root: str):
-        self.project_root = project_root
-        self.project_files: List[str] = []
-        self.excluded_files: List[str] = []
+class ReadFileArgs(BaseModel):
+    file_path: str = Field(..., description="Path to the file to read")
 
-    def read_file(self, file_path: str) -> str:
-        with open(os.path.join(self.project_root, file_path), 'r') as file:
-            return file.read()
+class WriteFileArgs(BaseModel):
+    file_path: str = Field(..., description="Path to the file to write")
+    content: str = Field(..., description="Content to write to the file")
 
-    def write_file(self, file_path: str, content: str):
-        with open(os.path.join(self.project_root, file_path), 'w') as file:
-            file.write(content)
+def read_file(state: Dict, args: ReadFileArgs) -> Dict:
+    project_root = state.get("project_root", "")
+    with open(os.path.join(project_root, args.file_path), 'r') as file:
+        content = file.read()
+    return {"content": content}
 
-    def load_file_lists(self):
-        autocoder_dir = os.path.join(self.project_root, '.autocoder')
-        project_files_path = os.path.join(autocoder_dir, 'project_files')
-        excluded_files_path = os.path.join(autocoder_dir, 'excluded_files')
+def write_file(state: Dict, args: WriteFileArgs) -> Dict:
+    project_root = state.get("project_root", "")
+    with open(os.path.join(project_root, args.file_path), 'w') as file:
+        file.write(args.content)
+    return {"status": "success"}
 
-        if os.path.exists(project_files_path):
-            with open(project_files_path, 'r') as f:
-                self.project_files = [line.strip() for line in f if line.strip()]
+def list_files(state: Dict) -> Dict:
+    project_root = state.get("project_root", "")
+    file_list = []
+    for root, _, files in os.walk(project_root):
+        for file in files:
+            file_list.append(os.path.relpath(os.path.join(root, file), project_root))
+    return {"files": file_list}
 
-        if os.path.exists(excluded_files_path):
-            with open(excluded_files_path, 'r') as f:
-                self.excluded_files = [line.strip() for line in f if line.strip()]
+file_manager_tools = [
+    Tool.from_function(
+        func=read_file,
+        name="read_file",
+        description="Read the contents of a file",
+        args_schema=ReadFileArgs
+    ),
+    Tool.from_function(
+        func=write_file,
+        name="write_file",
+        description="Write content to a file",
+        args_schema=WriteFileArgs
+    ),
+    Tool.from_function(
+        func=list_files,
+        name="list_files",
+        description="List all files in the project"
+    )
+]
 
-    def get_file_contents(self) -> Dict[str, str]:
-        return {file: self.read_file(file) for file in self.project_files}
-
-    def is_debug_mode(self) -> bool:
-        return os.getenv('DEBUG', 'false').lower() == 'true'
-
-    def create_debug_context(self):
-        if not self.is_debug_mode():
-            return
-
-        debug_context = ""
-        for file in self.project_files:
-            debug_context += f"#File {file}:\n{self.read_file(file)}\n\n"
-
-        debug_context_path = os.path.join(self.project_root, '.autocoder', 'debug_context.txt')
-        self.write_file(debug_context_path, debug_context)
-
-    def get_context(self) -> str:
-        if self.is_debug_mode():
-            debug_context_path = os.path.join(self.project_root, '.autocoder', 'debug_context.txt')
-            return self.read_file(debug_context_path)
-        else:
-            return "\n\n".join([f"#File {file}:\n{self.read_file(file)}" for file in self.project_files])
+file_manager_node = ToolNode(file_manager_tools)
 
 
 
@@ -770,122 +906,82 @@ class FileManager:
 
 #File ./src/autocoder/langgraph_workflow.py:
 import logging
-from typing import Annotated, TypedDict
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
+from typing import Dict, Any
+from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from .state import State
-from .nodes.tools.directory_checker import check_autocoder_dir
+from .file_manager import file_manager_node
+from .context_builder import context_builder_node
+from .task_interpreter import task_interpreter_node
+from .code_modifier import code_modifier_node
+from .test_runner import test_runner_node
+from .error_handler import ErrorHandler
+from .claude_api_wrapper import claude_api_node, ClaudeAPIWrapper
 
 logger = logging.getLogger(__name__)
 
 class LangGraphWorkflow:
-    def __init__(self, file_manager, context_builder, task_interpreter,
-                 code_modifier, test_runner, error_handler, claude_api):
-        self.file_manager = file_manager
-        self.context_builder = context_builder
-        self.task_interpreter = task_interpreter
-        self.code_modifier = code_modifier
-        self.test_runner = test_runner
-        self.error_handler = error_handler
-        self.claude_api = claude_api
+    def __init__(self, api_key: str):
+        self.claude_api = ClaudeAPIWrapper(api_key)
         self.graph = self._build_graph()
         self.memory = MemorySaver()
 
-    def _build_graph(self):
-        graph = StateGraph(State)
+    def _build_graph(self) -> StateGraph:
+        workflow = StateGraph(State)
 
-        # Add nodes
-        graph.add_node("check_autocoder_dir", check_autocoder_dir)
-        graph.add_node("interpret_task", self._interpret_task)
-        graph.add_node("build_context", self._build_context)
-        graph.add_node("generate_modifications", self._generate_modifications)
-        graph.add_node("apply_modifications", self._apply_modifications)
-        graph.add_node("run_tests", self._run_tests)
+        # Define nodes
+        workflow.add_node("file_manager", file_manager_node)
+        workflow.add_node("context_builder", context_builder_node)
+        workflow.add_node("task_interpreter", task_interpreter_node)
+        workflow.add_node("claude_api", claude_api_node)
+        workflow.add_node("code_modifier", code_modifier_node)
+        workflow.add_node("test_runner", test_runner_node)
 
         # Define edges
-        graph.add_edge(START, "check_autocoder_dir")
-        graph.add_conditional_edges(
-            "check_autocoder_dir",
-            self._check_initialization,
-            {True: "interpret_task", False: END}
-        )
-        graph.add_edge("interpret_task", "build_context")
-        graph.add_edge("build_context", "generate_modifications")
-        graph.add_edge("generate_modifications", "apply_modifications")
-        graph.add_edge("apply_modifications", "run_tests")
-        graph.add_conditional_edges(
-            "run_tests",
+        workflow.set_entry_point("task_interpreter")
+        workflow.add_edge("task_interpreter", "claude_api")
+        workflow.add_edge("claude_api", "code_modifier")
+        workflow.add_edge("code_modifier", "file_manager")
+        workflow.add_edge("file_manager", "test_runner")
+        workflow.add_conditional_edges(
+            "test_runner",
             self._handle_test_results,
-            {True: END, False: "generate_modifications"}
+            {True: END, False: "claude_api"}
         )
 
-        return graph.compile(checkpointer=self.memory)
+        return workflow.compile()
 
-    def _check_initialization(self, state):
-        return state.get("autocoder_dir_exists", False) and self._check_file_listing_success(state)
-
-    def _check_file_listing_success(self, state):
-        return state.get("project_files") is not None and state.get("excluded_files") is not None
-
-    def _interpret_task(self, state: State):
-        interpreted_task = self.task_interpreter.interpret_task(state["messages"][-1].content)
-        logger.info(f"Task interpreted: {interpreted_task['task_type']}")
-        return {"interpreted_task": interpreted_task}
-
-    def _build_context(self, state: State):
-        files = self.file_manager.list_files()
-        file_contents = {f: self.file_manager.read_file(f) for f in files}
-        context = self.context_builder.build_context(file_contents)
-        logger.info("Context built successfully")
-        return {"files": file_contents, "context": context}
-
-    def _generate_modifications(self, state: State):
-        task_prompt = self.task_interpreter.get_prompt_for_task(state["interpreted_task"])
-        full_prompt = f"Context:\n{state['context']}\n\nTask:\n{task_prompt}"
-        modifications = self.claude_api.generate_response(full_prompt)
-        logger.info("Received response from Claude API")
-        return {"modifications": modifications}
-
-    def _apply_modifications(self, state: State):
-        for file in state["interpreted_task"]["affected_files"]:
-            if file in state["files"]:
-                original_code = state["files"][file]
-                modified_code = self.code_modifier.modify_code(original_code, state["modifications"])
-                self.file_manager.write_file(file, modified_code)
-                logger.info(f"Modified file: {file}")
-        return {}
-
-    def _run_tests(self, state: State):
-        success, test_result = self.test_runner.run_tests()
-        return {"test_results": test_result}
-
-    def _handle_test_results(self, state: State):
-        if "success" in state["test_results"]:
+    def _handle_test_results(self, state: State) -> bool:
+        if state["test_results"]["success"]:
             logger.info("Task completed successfully")
             return True
         else:
-            error_report = self.error_handler.handle_error(state["test_results"])
+            error_report = ErrorHandler.handle_error(state["test_results"]["details"])
             logger.warning("Tests failed. See error report for details.")
             return False
 
-    def execute(self, task_description, config=None):
+    def execute(self, task_description: str, config: Dict[str, Any] = None) -> str:
         try:
-            initial_state = {
-                "messages": [("user", task_description)],
-                "project_root": self.file_manager.project_root,
-                "claude_api": self.claude_api,
-                "autocoder_dir_exists": False  # Initialize this in the state
-            }
+            initial_state = State(
+                messages=[{"role": "user", "content": task_description}],
+                project_root=config.get("project_root", ""),
+                claude_api=self.claude_api,
+                files={},
+                context="",
+                interpreted_task={},
+                modifications="",
+                test_results={"success": False, "details": ""}
+            )
             for event in self.graph.stream(initial_state, config):
+                if "error" in event:
+                    return f"An error occurred: {event['error']['error_message']}"
                 if "messages" in event:
                     print(event["messages"][-1])
             return "Task execution completed."
         except Exception as e:
-            error_report = self.error_handler.handle_error(e)
-            self.error_handler.log_error(e)
-            return error_report
+            error_report = ErrorHandler.handle_error(e)
+            ErrorHandler.log_error(e)
+            return f"An unexpected error occurred: {error_report['error_message']}"
 
 
 
@@ -1036,6 +1132,12 @@ DEBUG=true
 ./src/autocoder/nodes/tools/__init__.py
 ./src/autocoder/nodes/tools/directory_checker.py
 ./src/autocoder/nodes/__init__.py
+./src/autocoder/nodes/interpret_task.py
+./src/autocoder/nodes/build_context.py
+./src/autocoder/nodes/generate_modifications.py
+./src/autocoder/nodes/apply_modifications.py
+./src/autocoder/nodes/run_tests.py
+./src/autocoder/nodes/check_autocoder_dir.py
 ./src/autocoder/file_listing/__init__.py
 ./src/autocoder/file_listing/file_listing_node.py
 ./src/autocoder/__init__.py
