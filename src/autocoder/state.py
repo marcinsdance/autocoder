@@ -10,5 +10,4 @@ class State(TypedDict):
     modifications: str
     test_results: str
     project_root: str
-    claude_api: any  # You might want to create a specific type for this
     autocoder_dir_exists: bool

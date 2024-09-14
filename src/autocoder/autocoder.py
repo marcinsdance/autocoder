@@ -1,5 +1,3 @@
-# File: src/autocoder/autocoder.py
-
 import argparse
 import logging
 import os
@@ -62,9 +60,31 @@ def execute_task(task_description):
         logger.error(f"Failed to execute task: {str(e)}")
         print(f"Error: Failed to execute task: {str(e)}")
 
+def execute_analyze():
+    if not check_autocoder_dir():
+        logger.error("Autocoder is not initialized in this directory.")
+        print("Autocoder is not initialized in this directory. Please run 'autocoder init' first.")
+        return
+
+    load_dotenv()
+    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
+    if not api_key:
+        logger.error("No API key found. Cannot proceed with analysis.")
+        print("Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file.")
+        return
+
+    try:
+        workflow = LangGraphWorkflow(api_key)
+        print("Analyzing project...")
+        analysis_result = workflow.execute_analysis({"project_root": os.getcwd()})
+        print(analysis_result)
+    except Exception as e:
+        logger.error(f"Failed to execute analysis: {str(e)}")
+        print(f"Error: Failed to execute analysis: {str(e)}")
+
 def main():
     parser = argparse.ArgumentParser(description="Claude Automated Coding")
-    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "help"],
+    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "analyze", "help"],
                         help="Command to execute")
     parser.add_argument("task_description", nargs='?', default="",
                         help="The task description for the automated coding process")
@@ -84,6 +104,9 @@ def main():
             logger.error("No task description provided for 'task' command.")
             print("Error: Task description is required for the 'task' command.")
             display_usage_message()
+    elif args.command == "analyze":
+        logger.info("Analyzing project...")
+        execute_analyze()
     elif args.command == "help" or not args.command:
         if check_autocoder_dir():
             logger.info("Displaying usage message for initialized directory.")

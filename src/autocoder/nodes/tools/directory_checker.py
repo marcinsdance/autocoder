@@ -19,10 +19,10 @@ The available commands for execution are listed below.
 Commands:
   init          Init autocoder in this directory
   task          Execute a task in an initialized directory
+  analyze       Analyze the project in an initialized directory
   help          Display help information
 """
     print(message)
-
 
 def display_usage_message():
     message = """
@@ -31,6 +31,7 @@ The available commands for execution are listed below.
 Commands:
   init          Init autocoder in this directory
   task          Execute a task in an initialized directory
+  analyze       Analyze the project in an initialized directory
   help          Display help information
 """
     print(message)
