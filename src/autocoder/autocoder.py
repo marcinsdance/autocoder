@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# File: src/autocoder/autocoder.py
 
 import argparse
 import logging
@@ -7,10 +7,7 @@ from dotenv import load_dotenv
 from typing import Dict, Any
 
 from .langgraph_workflow import LangGraphWorkflow
-from .claude_api_wrapper import ClaudeAPIWrapper
-from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder, \
-    display_usage_message
-from .file_listing.file_listing_node import FileListingNode
+from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder, display_usage_message
 from .error_handler import ErrorHandler
 
 logging.basicConfig(level=logging.INFO)
@@ -19,45 +16,8 @@ logger = logging.getLogger(__name__)
 def initialize_autocoder():
     logger.info("Starting Autocoder initialization...")
     init_autocoder()
-    logger.info("Autocoder directory initialized. Now initializing file listing...")
-    result = initialize_file_listing()
-    if isinstance(result, dict) and result.get('error'):
-        logger.error(f"Autocoder initialization failed: {result['error']}")
-        print(f"Error: {result['error']}")
-        return False
     logger.info("Autocoder initialization complete.")
     return True
-
-def initialize_file_listing():
-    project_root = os.getcwd()
-    logger.debug(f"Current working directory: {project_root}")
-
-    # Load environment variables
-    load_dotenv()
-    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
-    if not api_key:
-        logger.error("No API key found. Cannot proceed with file listing.")
-        return {'error': "No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file."}
-
-    try:
-        logger.debug("Initializing Claude API wrapper...")
-        claude_api = ClaudeAPIWrapper(api_key)
-    except Exception as e:
-        logger.error(f"Failed to initialize Claude API: {str(e)}")
-        return {'error': f"Failed to initialize Claude API: {str(e)}"}
-
-    logger.info("Creating FileListingNode...")
-    file_lister = FileListingNode(project_root, claude_api)
-
-    state = {"project_root": project_root, "claude_api": claude_api}
-    logger.info("Processing file listing...")
-    updated_state = file_lister.process(state)
-
-    if updated_state.get('error'):
-        return updated_state
-
-    logger.info("File listing process completed successfully.")
-    return updated_state
 
 def stream_execution(workflow: LangGraphWorkflow, task_description: str, config: Dict[str, Any]):
     try:
@@ -66,12 +26,11 @@ def stream_execution(workflow: LangGraphWorkflow, task_description: str, config:
             "project_root": config.get("project_root", ""),
             "files": {},
             "context": "",
-            "interpreted_task": {},
-            "modifications": "",
-            "test_results": {"success": False, "details": ""}
+            "task_completed": False,
+            "error": None
         }, config):
             if "error" in event:
-                yield f"An error occurred: {event['error']['error_message']}"
+                yield f"An error occurred: {event['error']}"
             elif "messages" in event:
                 yield f"Output: {event['messages'][-1]['content']}"
             else:
@@ -87,10 +46,7 @@ def execute_task(task_description):
         print("Autocoder is not initialized in this directory. Please run 'autocoder init' first.")
         return
 
-    # Load environment variables
     load_dotenv()
-
-    # Get API key directly from environment
     api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
     if not api_key:
         logger.error("No API key found. Cannot proceed with task execution.")
@@ -98,14 +54,10 @@ def execute_task(task_description):
         return
 
     try:
-        # Initialize LangGraph workflow
         workflow = LangGraphWorkflow(api_key)
-
-        # Execute workflow and stream results
         print("Executing task. Streaming output:")
         for output in stream_execution(workflow, task_description, {"project_root": os.getcwd()}):
             print(output)
-
     except Exception as e:
         logger.error(f"Failed to execute task: {str(e)}")
         print(f"Error: Failed to execute task: {str(e)}")
