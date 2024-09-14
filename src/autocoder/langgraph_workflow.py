@@ -16,6 +16,7 @@ from .nodes.llm_analyze_node import create_llm_analyze_node
 
 logger = logging.getLogger(__name__)
 
+
 class LangGraphWorkflow:
     def __init__(self, api_key: str):
         self.claude_api = ClaudeAPIWrapper(api_key).client
@@ -38,7 +39,7 @@ class LangGraphWorkflow:
         workflow.add_edge("file_listing", "task_execution")
         workflow.add_conditional_edges(
             "task_execution",
-            self._handle_task_execution_result,  # Changed from _handle_task_result
+            self._handle_task_execution_result,
             {True: END, False: "error_handling"}
         )
         workflow.add_edge("error_handling", "task_execution")
@@ -71,16 +72,19 @@ class LangGraphWorkflow:
     def execute_analysis(self, config: Dict[str, Any] = None) -> str:
         try:
             initial_state = State(
-                messages=[AIMessage(content="Please analyze the project.")],  # Changed to AIMessage
+                messages=[AIMessage(content="Please analyze the project.")],
                 project_root=config.get("project_root", ""),
                 context="",
                 analysis_result="",
                 error=None
             )
             logger.info(f"Initial state: {initial_state}")
-            state = initial_state
+
+            # Set a higher recursion limit
+            config = config or {}
+            config['recursion_limit'] = 50  # Adjust this value as needed
+
             for event in self.analyze_graph.stream(initial_state, config):
-                state.update(event)
                 logger.info(f"Event received: {event}")
                 if "error" in event:
                     logger.error(f"Error in event: {event['error']}")
@@ -111,22 +115,23 @@ class LangGraphWorkflow:
                     print(event["analysis_result"])
                     return "Analysis completed."
 
-            if "analysis_result" in state:
-                logger.info("Final analysis result found")
-                print("Final LLM Analysis of the Project:")
-                print(state["analysis_result"])
-                return "Analysis completed."
-            else:
-                logger.warning("No analysis result was generated")
-                print("No analysis result was generated.")
-                return "Analysis completed with no result."
+            logger.warning("No analysis result was generated")
+            return "Analysis completed with no result."
         except Exception as e:
             logger.exception(f"An unexpected error occurred during analysis: {str(e)}")
             return f"An unexpected error occurred during analysis: {str(e)}"
 
     def _handle_analysis_result(self, state: State) -> bool:
         # Check if we have an analysis result and it's not empty
-        return 'analysis_result' in state and bool(state['analysis_result'])
+        if 'analysis_result' in state and state['analysis_result'].strip():
+            logger.info("Analysis result found. Ending the workflow.")
+            return True
+        elif state.get('error'):
+            logger.error(f"Error encountered: {state['error']}. Ending the workflow.")
+            return True
+        else:
+            logger.info("No analysis result yet. Continuing the workflow.")
+            return False
 
     def _handle_task_execution_result(self, state: State) -> bool:
         """
@@ -200,4 +205,3 @@ class LangGraphWorkflow:
         except Exception as e:
             logger.exception(f"An unexpected error occurred: {str(e)}")
             return f"An unexpected error occurred: {str(e)}"
-

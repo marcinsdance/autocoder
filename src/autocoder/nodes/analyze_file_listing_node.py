@@ -26,7 +26,7 @@ class AnalyzeFileListingNode:
                 'project_files': project_files,
                 'excluded_files': [str(pat) for pat in ignore_spec.patterns],
                 'context': context,
-                'messages': state.get('messages', []) + [AIMessage(content="File listing completed.")]
+                'messages': state.get('messages', []) + [AIMessage(content="File listing and context building completed.")]
             })
 
             logger.info(f"File listing completed for analysis. Found {len(project_files)} files.")
@@ -73,19 +73,25 @@ class AnalyzeFileListingNode:
 
     @staticmethod
     def build_context(project_root: Path, project_files: List[str]) -> str:
-        context = ''
-        for file in project_files:
+        context = "Project Files:\n"
+        context += "\n".join(project_files)
+        context += "\n\nFile Contents:\n"
+
+        for file in project_files[:10]:  # Limit to first 10 files to avoid overwhelming the LLM
             file_path = project_root / file
             try:
                 with file_path.open('r', encoding='utf-8') as f:
                     content = f.read()
-                context += f'#File {file}:\n{content}\n\n'
+                context += f'\n\n#File {file}:\n{content[:1000]}'  # Limit each file to first 1000 characters
             except Exception as e:
                 logger.warning(f"Could not read file {file}: {str(e)}")
+
         return context
+
 
 def analyze_file_listing(state: Dict, args: AnalyzeFileListingArgs) -> Dict:
     return AnalyzeFileListingNode.process(state, args)
+
 
 analyze_file_listing_tools = [
     Tool.from_function(
