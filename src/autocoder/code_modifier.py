@@ -1,44 +1,39 @@
-import re
 import ast
 import astor
+from typing import Dict
+from langchain_core.tools import Tool
+from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel, Field
 
+class CodeModifierArgs(BaseModel):
+    original_code: str = Field(..., description="The original code to be modified")
+    modifications: str = Field(..., description="Description of modifications to be made")
 
-class CodeModifier:
-    def __init__(self):
-        pass
+def code_modifier(state: Dict, args: CodeModifierArgs) -> Dict:
+    try:
+        tree = ast.parse(args.original_code)
+        modified_tree = apply_modifications(tree, args.modifications)
+        modified_code = astor.to_source(modified_tree)
+        return {"modified_code": modified_code}
+    except SyntaxError:
+        return {"modified_code": simple_modify(args.original_code, args.modifications)}
 
-    def modify_code(self, original_code, modifications):
-        try:
-            # Parse the original code into an AST
-            tree = ast.parse(original_code)
+def apply_modifications(tree, modifications):
+    # TODO: Implement more sophisticated AST transformations here
+    new_node = ast.Expr(ast.Str(f"# Modified: {modifications}"))
+    tree.body.insert(0, new_node)
+    return tree
 
-            # Apply modifications
-            modified_tree = self.apply_modifications(tree, modifications)
+def simple_modify(original_code, modifications):
+    return f"# Modified: {modifications}\n\n{original_code}"
 
-            # Generate the modified code
-            modified_code = astor.to_source(modified_tree)
+code_modifier_tools = [
+    Tool.from_function(
+        func=code_modifier,
+        name="code_modifier",
+        description="Modify code based on given instructions",
+        args_schema=CodeModifierArgs
+    )
+]
 
-            return modified_code
-        except SyntaxError:
-            # If parsing fails, fall back to simple string replacement
-            return self.simple_modify(original_code, modifications)
-
-    def apply_modifications(self, tree, modifications):
-        # TODO: Implement more sophisticated AST transformations here
-        # For now, we'll just add a comment at the top of the file
-        new_node = ast.Expr(ast.Str(f"# Modified by AutoCoder: {modifications}"))
-        tree.body.insert(0, new_node)
-        return tree
-
-    def simple_modify(self, original_code, modifications):
-        # Simple string-based modifications
-        # This is a fallback method and should be improved
-        modified_code = f"# Modified by AutoCoder: {modifications}\n\n{original_code}"
-
-        # Apply simple replacements based on the modifications string
-        # This is a very basic implementation and should be enhanced
-        replacements = re.findall(r'replace "([^"]*)" with "([^"]*)"', modifications)
-        for old, new in replacements:
-            modified_code = modified_code.replace(old, new)
-
-        return modified_code
+code_modifier_node = ToolNode(code_modifier_tools)

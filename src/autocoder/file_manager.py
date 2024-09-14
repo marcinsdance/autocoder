@@ -1,54 +1,54 @@
 import os
-import fnmatch
-from typing import List, Dict
+from typing import Dict, List
+from langchain_core.tools import Tool
+from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel, Field
 
-class FileManager:
-    def __init__(self, project_root: str):
-        self.project_root = project_root
-        self.project_files: List[str] = []
-        self.excluded_files: List[str] = []
+class ReadFileArgs(BaseModel):
+    file_path: str = Field(..., description="Path to the file to read")
 
-    def read_file(self, file_path: str) -> str:
-        with open(os.path.join(self.project_root, file_path), 'r') as file:
-            return file.read()
+class WriteFileArgs(BaseModel):
+    file_path: str = Field(..., description="Path to the file to write")
+    content: str = Field(..., description="Content to write to the file")
 
-    def write_file(self, file_path: str, content: str):
-        with open(os.path.join(self.project_root, file_path), 'w') as file:
-            file.write(content)
+def read_file(state: Dict, args: ReadFileArgs) -> Dict:
+    project_root = state.get("project_root", "")
+    with open(os.path.join(project_root, args.file_path), 'r') as file:
+        content = file.read()
+    return {"content": content}
 
-    def load_file_lists(self):
-        autocoder_dir = os.path.join(self.project_root, '.autocoder')
-        project_files_path = os.path.join(autocoder_dir, 'project_files')
-        excluded_files_path = os.path.join(autocoder_dir, 'excluded_files')
+def write_file(state: Dict, args: WriteFileArgs) -> Dict:
+    project_root = state.get("project_root", "")
+    with open(os.path.join(project_root, args.file_path), 'w') as file:
+        file.write(args.content)
+    return {"status": "success"}
 
-        if os.path.exists(project_files_path):
-            with open(project_files_path, 'r') as f:
-                self.project_files = [line.strip() for line in f if line.strip()]
+def list_files(state: Dict) -> Dict:
+    project_root = state.get("project_root", "")
+    file_list = []
+    for root, _, files in os.walk(project_root):
+        for file in files:
+            file_list.append(os.path.relpath(os.path.join(root, file), project_root))
+    return {"files": file_list}
 
-        if os.path.exists(excluded_files_path):
-            with open(excluded_files_path, 'r') as f:
-                self.excluded_files = [line.strip() for line in f if line.strip()]
+file_manager_tools = [
+    Tool.from_function(
+        func=read_file,
+        name="read_file",
+        description="Read the contents of a file",
+        args_schema=ReadFileArgs
+    ),
+    Tool.from_function(
+        func=write_file,
+        name="write_file",
+        description="Write content to a file",
+        args_schema=WriteFileArgs
+    ),
+    Tool.from_function(
+        func=list_files,
+        name="list_files",
+        description="List all files in the project"
+    )
+]
 
-    def get_file_contents(self) -> Dict[str, str]:
-        return {file: self.read_file(file) for file in self.project_files}
-
-    def is_debug_mode(self) -> bool:
-        return os.getenv('DEBUG', 'false').lower() == 'true'
-
-    def create_debug_context(self):
-        if not self.is_debug_mode():
-            return
-
-        debug_context = ""
-        for file in self.project_files:
-            debug_context += f"#File {file}:\n{self.read_file(file)}\n\n"
-
-        debug_context_path = os.path.join(self.project_root, '.autocoder', 'debug_context.txt')
-        self.write_file(debug_context_path, debug_context)
-
-    def get_context(self) -> str:
-        if self.is_debug_mode():
-            debug_context_path = os.path.join(self.project_root, '.autocoder', 'debug_context.txt')
-            return self.read_file(debug_context_path)
-        else:
-            return "\n\n".join([f"#File {file}:\n{self.read_file(file)}" for file in self.project_files])
+file_manager_node = ToolNode(file_manager_tools)

@@ -1,44 +1,26 @@
-class ContextBuilder:
-    def __init__(self):
-        self.context = {}
+from typing import Dict, List
+from langchain_core.tools import Tool
+from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel, Field
+from .file_manager import read_file, ReadFileArgs
 
-    def build_context(self, file_manager):
-        context = file_manager.get_context()
-        self.context['built_context'] = context
-        return context
+class BuildContextArgs(BaseModel):
+    files: List[str] = Field(..., description="List of file paths to build context from")
 
-    def get_full_context(self):
-        return self.context
+def build_context(state: Dict, args: BuildContextArgs) -> Dict:
+    context = ""
+    for file in args.files:
+        content = read_file(state, ReadFileArgs(file_path=file))["content"]
+        context += f"#File {file}:\n{content}\n\n"
+    return {"context": context}
 
-    def add_context(self, key, value):
-        self.context[key] = value
+context_builder_tools = [
+    Tool.from_function(
+        func=build_context,
+        name="build_context",
+        description="Build context from a list of files",
+        args_schema=BuildContextArgs
+    )
+]
 
-    def get_context(self, key):
-        if key in self.context:
-            return self.context[key]
-        else:
-            raise KeyError(f"Key '{key}' not found in context")
-
-    def update_context(self, key, value):
-        if key in self.context:
-            self.context[key] = value
-        else:
-            raise KeyError(f"Key '{key}' not found in context")
-
-    def remove_context(self, key):
-        if key in self.context:
-            del self.context[key]
-        else:
-            raise KeyError(f"Key '{key}' not found in context")
-
-    def clear_context(self):
-        self.context.clear()
-
-    def context_exists(self, key):
-        return key in self.context
-
-    def get_size(self):
-        return len(self.context)
-
-    def add_multiple_context(self, context_dict):
-        self.context.update(context_dict)
+context_builder_node = ToolNode(context_builder_tools)

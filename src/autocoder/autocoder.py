@@ -5,11 +5,11 @@ import logging
 import os
 from dotenv import load_dotenv
 
-from .file_manager import FileManager
-from .context_builder import ContextBuilder
-from .task_interpreter import TaskInterpreter
-from .code_modifier import CodeModifier
-from .test_runner import TestRunner
+from .file_manager import file_manager_node
+from .context_builder import context_builder_node
+from .task_interpreter import task_interpreter_node
+from .code_modifier import code_modifier_node
+from .test_runner import test_runner_node
 from .error_handler import ErrorHandler
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
@@ -92,19 +92,10 @@ def execute_task(task_description):
         print(f"Error: Failed to initialize Claude API: {str(e)}")
         return
 
-    # Initialize components
-    project_root = os.getcwd()
-    file_manager = FileManager(project_root)
-    context_builder = ContextBuilder()
-    task_interpreter = TaskInterpreter()
-    code_modifier = CodeModifier()
-    test_runner = TestRunner()
-    error_handler = ErrorHandler()
-
     # Initialize LangGraph workflow
     workflow = LangGraphWorkflow(
-        file_manager, context_builder, task_interpreter,
-        code_modifier, test_runner, error_handler, claude_api
+        file_manager_node, context_builder_node, task_interpreter_node,
+        code_modifier_node, test_runner_node, ErrorHandler(), claude_api
     )
 
     # Execute workflow
@@ -113,8 +104,12 @@ def execute_task(task_description):
     print(result)
 
     # Create debug context if DEBUG mode is enabled
-    if file_manager.is_debug_mode():
-        file_manager.create_debug_context()
+    if os.getenv('DEBUG', 'false').lower() == 'true':
+        create_debug_context()
+
+def create_debug_context():
+    # Implement debug context creation here
+    pass
 
 
 def main():
