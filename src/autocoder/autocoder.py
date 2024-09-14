@@ -4,22 +4,17 @@ import argparse
 import logging
 import os
 from dotenv import load_dotenv
+from typing import Dict, Any
 
-from .file_manager import file_manager_node
-from .context_builder import context_builder_node
-from .task_interpreter import task_interpreter_node
-from .code_modifier import code_modifier_node
-from .test_runner import test_runner_node
-from .error_handler import ErrorHandler
-from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
+from .claude_api_wrapper import ClaudeAPIWrapper
 from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder, \
     display_usage_message
 from .file_listing.file_listing_node import FileListingNode
+from .error_handler import ErrorHandler
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 def initialize_autocoder():
     logger.info("Starting Autocoder initialization...")
@@ -33,18 +28,16 @@ def initialize_autocoder():
     logger.info("Autocoder initialization complete.")
     return True
 
-
 def initialize_file_listing():
     project_root = os.getcwd()
     logger.debug(f"Current working directory: {project_root}")
 
     # Load environment variables
     load_dotenv()
-    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY') or os.getenv('OPENAI_API_KEY')
+    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
     if not api_key:
         logger.error("No API key found. Cannot proceed with file listing.")
-        return {
-            'error': "No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file."}
+        return {'error': "No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file."}
 
     try:
         logger.debug("Initializing Claude API wrapper...")
@@ -66,6 +59,27 @@ def initialize_file_listing():
     logger.info("File listing process completed successfully.")
     return updated_state
 
+def stream_execution(workflow: LangGraphWorkflow, task_description: str, config: Dict[str, Any]):
+    try:
+        for event in workflow.graph.stream({
+            "messages": [{"role": "user", "content": task_description}],
+            "project_root": config.get("project_root", ""),
+            "files": {},
+            "context": "",
+            "interpreted_task": {},
+            "modifications": "",
+            "test_results": {"success": False, "details": ""}
+        }, config):
+            if "error" in event:
+                yield f"An error occurred: {event['error']['error_message']}"
+            elif "messages" in event:
+                yield f"Output: {event['messages'][-1]['content']}"
+            else:
+                yield f"Event: {event}"
+    except Exception as e:
+        error_report = ErrorHandler.handle_error(e)
+        ErrorHandler.log_error(e)
+        yield f"An unexpected error occurred: {error_report['error_message']}"
 
 def execute_task(task_description):
     if not check_autocoder_dir():
@@ -75,42 +89,26 @@ def execute_task(task_description):
 
     # Load environment variables
     load_dotenv()
-    print("Environment variables:", os.environ)
 
     # Get API key directly from environment
-    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY') or os.getenv('OPENAI_API_KEY')
+    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
     if not api_key:
         logger.error("No API key found. Cannot proceed with task execution.")
-        print(
-            "Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file.")
+        print("Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file.")
         return
 
     try:
-        claude_api = ClaudeAPIWrapper(api_key)
+        # Initialize LangGraph workflow
+        workflow = LangGraphWorkflow(api_key)
+
+        # Execute workflow and stream results
+        print("Executing task. Streaming output:")
+        for output in stream_execution(workflow, task_description, {"project_root": os.getcwd()}):
+            print(output)
+
     except Exception as e:
-        logger.error(f"Failed to initialize Claude API: {str(e)}")
-        print(f"Error: Failed to initialize Claude API: {str(e)}")
-        return
-
-    # Initialize LangGraph workflow
-    workflow = LangGraphWorkflow(
-        file_manager_node, context_builder_node, task_interpreter_node,
-        code_modifier_node, test_runner_node, ErrorHandler(), claude_api
-    )
-
-    # Execute workflow
-    result = workflow.execute(task_description)
-
-    print(result)
-
-    # Create debug context if DEBUG mode is enabled
-    if os.getenv('DEBUG', 'false').lower() == 'true':
-        create_debug_context()
-
-def create_debug_context():
-    # Implement debug context creation here
-    pass
-
+        logger.error(f"Failed to execute task: {str(e)}")
+        print(f"Error: Failed to execute task: {str(e)}")
 
 def main():
     parser = argparse.ArgumentParser(description="Claude Automated Coding")
@@ -145,7 +143,6 @@ def main():
         logger.error(f"Unknown command: {args.command}")
         print(f"Unknown command: {args.command}")
         display_usage_message()
-
 
 if __name__ == "__main__":
     main()
