@@ -5,3 +5,4 @@ anthropic==0.31.2
 langgraph==0.1.9
 pytest==8.2.2
 astor==0.8.1
+pathspec==0.12.1

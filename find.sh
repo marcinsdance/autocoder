@@ -1,1 +1,1 @@
-find . -type f ! -name ".env" | grep -vi venv | grep -vi idea | grep -vi llm | grep -vi ".git" | grep -vi pycache | grep -vi attachments | grep -vi processor.db | grep -vi debug | grep -vi egg
+find . -type f ! -name ".env" | grep -vi venv | grep -vi idea | grep -vi llm | grep -vi ".git" | grep -vi pycache | grep -vi attachments | grep -vi processor.db | grep -vi debug | grep -vi egg | grep -vi MANIFEST | grep -vi "\.autocoder" | grep -v version | grep -vi release-script | grep -vi setup | grep -vi files | grep -vi readme | grep -vi find.sh

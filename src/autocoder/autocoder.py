@@ -40,12 +40,7 @@ def initialize_file_listing():
 
     # Load environment variables
     load_dotenv()
-    print("ANTHROPIC_API_KEY:", os.getenv('ANTHROPIC_API_KEY'))
-    print("CLAUDE_API_KEY:", os.getenv('CLAUDE_API_KEY'))
-    print("OPENAI_API_KEY:", os.getenv('OPENAI_API_KEY'))
     api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY') or os.getenv('OPENAI_API_KEY')
-    print("Selected API key:", api_key)
-
     if not api_key:
         logger.error("No API key found. Cannot proceed with file listing.")
         return {
@@ -54,8 +49,6 @@ def initialize_file_listing():
     try:
         logger.debug("Initializing Claude API wrapper...")
         claude_api = ClaudeAPIWrapper(api_key)
-        # You might want to add a method to test the API connection here
-        # For example: claude_api.test_connection()
     except Exception as e:
         logger.error(f"Failed to initialize Claude API: {str(e)}")
         return {'error': f"Failed to initialize Claude API: {str(e)}"}

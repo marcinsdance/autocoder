@@ -10,100 +10,6 @@ DEBUG=true
 
 
 
-#File ./README.md:
-# Claude Automated Coding
-
-Claude Automated Coding is an innovative tool that leverages the power of AI to automate coding tasks. It uses the Claude API and LangGraph to interpret coding tasks, modify code, and run tests automatically.
-
-## Features
-
-- Task interpretation using natural language processing
-- Automated code modification based on task description
-- Context-aware code changes
-- Automatic test running after modifications
-- Detailed error handling and reporting
-
-## Prerequisites
-
-Before you begin, ensure you have met the following requirements:
-
-- Python 3.7 or higher
-- An Anthropic API key (for Claude API access)
-
-## Installation
-
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/claude_automated_coding.git
-   cd claude_automated_coding
-   ```
-
-2. Create and activate a virtual environment:
-   ```
-   python -m venv .venv
-   ```
-   
-   On Windows, activate the virtual environment with:
-   ```
-   .venv\Scripts\activate
-   ```
-   
-   On macOS and Linux, use:
-   ```
-   source .venv/bin/activate
-   ```
-
-3. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-4. Set up your environment variables:
-   - Copy the `.env.example` file to `.env`
-   - Open the `.env` file and add your Anthropic API key:
-     ```
-     ANTHROPIC_API_KEY=your_api_key_here
-     ```
-
-## Usage
-
-To use Claude Automated Coding, ensure your virtual environment is activated, then run the following command:
-
-```
-python src/autocoder.py "Your task description here"
-```
-
-For example:
-
-```
-python src/autocoder.py "Add a new function to calculate the factorial of a number in the math_utils.py file"
-```
-
-The tool will interpret the task, make the necessary code changes, run tests, and provide you with the results.
-
-## Contributing
-
-Contributions to Claude Automated Coding are welcome. Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgements
-
-- This project uses the Claude API by Anthropic
-- LangGraph is used for workflow management
-
-## Contact
-
-If you have any questions or feedback, please open an issue on the GitHub repository.
-
-
-
-
-
-
-
 #File ./conftest.py:
 import sys
 from pathlib import Path
@@ -111,206 +17,6 @@ from pathlib import Path
 # Add the src directory to the Python path
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
-
-
-
-
-
-
-
-#File ./list_manifest_files.py:
-#!/usr/bin/env python3
-
-import os
-import glob
-import fnmatch
-
-def is_excluded(path):
-    # List of directories and patterns to always exclude
-    exclude_patterns = [
-        '.venv', '__pycache__', '*.pyc', '*.pyo', '*.pyd',
-        '.git', '.idea', '.vscode', '*.egg-info',
-        'build', 'dist', '.tox', '.pytest_cache'
-    ]
-    
-    # Convert relative path to absolute path
-    abs_path = os.path.abspath(path)
-    
-    # Check if the path or any of its parents match any exclude pattern
-    path_parts = abs_path.split(os.sep)
-    for i in range(len(path_parts)):
-        current_path = os.sep.join(path_parts[:i+1])
-        if any(fnmatch.fnmatch(os.path.basename(current_path), pattern) for pattern in exclude_patterns):
-            return True
-    
-    return False
-
-def process_manifest_in(manifest_file='MANIFEST.in'):
-    print(f"Current working directory: {os.getcwd()}")
-    print(f"Processing file: {manifest_file}")
-
-    if not os.path.exists(manifest_file):
-        print(f"Error: {manifest_file} not found in the current directory.")
-        return
-
-    included_files = set()
-    excluded_files = set()
-
-    with open(manifest_file, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-
-            parts = line.split()
-            command = parts[0].lower()
-            patterns = parts[1:]
-
-            if command in ('include', 'recursive-include'):
-                for pattern in patterns:
-                    if command == 'include':
-                        included_files.update(f for f in glob.glob(pattern) if not is_excluded(f))
-                    else:  # recursive-include
-                        for root, _, filenames in os.walk('.'):
-                            if not is_excluded(root):
-                                for filename in fnmatch.filter(filenames, pattern):
-                                    path = os.path.join(root, filename)
-                                    if not is_excluded(path):
-                                        included_files.add(path)
-
-            elif command in ('exclude', 'recursive-exclude'):
-                for pattern in patterns:
-                    if command == 'exclude':
-                        excluded_files.update(glob.glob(pattern))
-                    else:  # recursive-exclude
-                        for root, _, filenames in os.walk('.'):
-                            for filename in fnmatch.filter(filenames, pattern):
-                                excluded_files.add(os.path.join(root, filename))
-
-            elif command == 'global-include':
-                for pattern in patterns:
-                    for root, _, filenames in os.walk('.'):
-                        if not is_excluded(root):
-                            included_files.update(
-                                os.path.join(root, f) for f in fnmatch.filter(filenames, pattern)
-                                if not is_excluded(os.path.join(root, f))
-                            )
-
-            elif command == 'global-exclude':
-                for pattern in patterns:
-                    for root, _, filenames in os.walk('.'):
-                        excluded_files.update(
-                            os.path.join(root, f) for f in fnmatch.filter(filenames, pattern)
-                        )
-
-    final_files = sorted(included_files - excluded_files)
-
-    print("\nFiles included based on MANIFEST.in:")
-    for file in final_files:
-        print(file)
-
-    print(f"\nTotal files: {len(final_files)}")
-
-if __name__ == "__main__":
-    process_manifest_in()
-
-
-
-
-
-
-
-#File ./release-script.sh:
-#!/bin/bash
-
-set -e
-
-# Configuration
-AUTOCODER_REPO="$HOME/git/autocoder"
-HOMEBREW_REPO="$HOME/git/homebrew-autocoder"
-GITHUB_USERNAME="marcinsdance"
-
-# Check if version is provided
-if [ "$#" -ne 1 ]; then
-    echo "Usage: $0 <new-version>"
-    exit 1
-fi
-
-NEW_VERSION="$1"
-
-echo "Starting release process for version $NEW_VERSION"
-
-# Update Autocoder repository
-cd "$AUTOCODER_REPO"
-git checkout develop
-echo "$NEW_VERSION" > version.txt
-git add version.txt
-git commit -m "Bump version to $NEW_VERSION"
-git push origin develop
-
-# Create and push release branch
-git checkout -b "release/$NEW_VERSION"
-git push -u origin "release/$NEW_VERSION"
-
-# Merge release branch to master
-git checkout master
-git merge --no-ff "release/$NEW_VERSION" -m "Merge release $NEW_VERSION"
-
-# Create and push tag
-git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
-git push origin master --tags
-
-# Merge release branch back to develop
-git checkout develop
-git merge --no-ff "release/$NEW_VERSION" -m "Merge release $NEW_VERSION back to develop"
-git push origin develop
-
-# Delete release branch
-git branch -d "release/$NEW_VERSION"
-git push origin --delete "release/$NEW_VERSION"
-
-echo "Autocoder repository updated. Please create a GitHub release manually."
-echo "Press any key to continue when the GitHub release is created..."
-read -n 1 -s
-
-# Update Homebrew formula
-echo "Updating Homebrew formula..."
-cd "$HOMEBREW_REPO"
-echo "Changed directory to $HOMEBREW_REPO"
-git checkout master
-echo "Checked out master branch"
-
-# Download new release and calculate SHA
-TARBALL_URL="https://github.com/$GITHUB_USERNAME/autocoder/archive/refs/tags/v$NEW_VERSION.tar.gz"
-wget "$TARBALL_URL" -O "v$NEW_VERSION.tar.gz"
-NEW_SHA256=$(shasum -a 256 "v$NEW_VERSION.tar.gz" | cut -d' ' -f1)
-
-# Update formula file
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS
-    sed -i '' "s/version \".*\"/version \"$NEW_VERSION\"/" Formula/autocoder.rb
-    sed -i '' "s|url \".*\"|url \"$TARBALL_URL\"|" Formula/autocoder.rb
-    sed -i '' "s/sha256 \".*\"/sha256 \"$NEW_SHA256\"/" Formula/autocoder.rb
-else
-    # Linux and others
-    sed -i "s/version \".*\"/version \"$NEW_VERSION\"/" Formula/autocoder.rb
-    sed -i "s|url \".*\"|url \"$TARBALL_URL\"|" Formula/autocoder.rb
-    sed -i "s/sha256 \".*\"/sha256 \"$NEW_SHA256\"/" Formula/autocoder.rb
-fi
-
-# Commit and push changes
-git add Formula/autocoder.rb
-git commit -m "Update Autocoder formula to version $NEW_VERSION"
-git push origin master
-
-echo "Homebrew formula updated."
-
-# Test the formula
-brew update
-brew uninstall autocoder || true
-brew install --build-from-source ./Formula/autocoder.rb
-
-echo "Release process completed. New version $NEW_VERSION is now available."
 
 
 
@@ -332,54 +38,6 @@ astor==0.8.1
 
 
 
-#File ./setup.py:
-from setuptools import setup, find_packages
-
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
-
-setup(
-    name="autocoder",
-    version="0.0.5",
-    author="Marcin Dancewicz",
-    author_email="mdancewicz@gmail.com",
-    description="An automated coding system using Claude API and LangGraph",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    url="https://github.com/marcinsdance/autocoder",
-    package_dir={"": "src"},
-    packages=find_packages(where="src"),
-    classifiers=[
-        "Development Status :: 3 - Alpha",
-        "Intended Audience :: Developers",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-    ],
-    python_requires=">=3.7",
-    install_requires=[
-        "python-dotenv",
-        "requests",
-        "openai",
-        "anthropic",
-        "langgraph",
-    ],
-    entry_points={
-        "console_scripts": [
-            "autocoder=autocoder.autocoder:main",
-        ],
-    },
-)
-
-
-
-
-
-
-
 #File ./src/autocoder/__init__.py:
 from .autocoder import main
 
@@ -392,7 +50,7 @@ from .error_handler import ErrorHandler
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
 from .state import State
-from .nodes.file_listing_node import FileListingNode
+from .file_listing.file_listing_node import FileListingNode
 
 __all__ = [
     'main',
@@ -417,18 +75,27 @@ __all__ = [
 #File ./src/autocoder/claude_api_wrapper.py:
 from anthropic import Anthropic
 
-
 class ClaudeAPIWrapper:
     def __init__(self, api_key):
         self.client = Anthropic(api_key=api_key)
+        self.model = "claude-3-opus-20240229"  # Using the latest Claude 3 model
 
     def generate_response(self, prompt):
-        response = self.client.completions.create(
-            model="claude-3-opus-20240229",
-            prompt=prompt,
-            max_tokens_to_sample=1000
-        )
-        return response.completion
+        try:
+            message = self.client.messages.create(
+                model=self.model,
+                max_tokens=1000,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return message.content[0].text
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
+            return None
+
+    def format_prompt(self, system_prompt, user_prompt):
+        return f"{system_prompt}\n\n{user_prompt}"
 
 
 
@@ -851,180 +518,124 @@ def init_autocoder():
 
 
 
-#File ./src/autocoder/nodes/file_listing_node.py:
-import os
+#File ./src/autocoder/langgraph_workflow.py:
 import logging
-from typing import List, Dict
+from typing import Annotated, TypedDict
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+from langgraph.checkpoint.memory import MemorySaver
+from .state import State
+from .nodes.tools.directory_checker import check_autocoder_dir
 
 logger = logging.getLogger(__name__)
 
-class FileListingNode:
-    def __init__(self, project_root: str, claude_api):
-        self.project_root = project_root
+class LangGraphWorkflow:
+    def __init__(self, file_manager, context_builder, task_interpreter,
+                 code_modifier, test_runner, error_handler, claude_api):
+        self.file_manager = file_manager
+        self.context_builder = context_builder
+        self.task_interpreter = task_interpreter
+        self.code_modifier = code_modifier
+        self.test_runner = test_runner
+        self.error_handler = error_handler
         self.claude_api = claude_api
-        logger.debug(f"FileListingNode initialized with project_root: {project_root}")
+        self.graph = self._build_graph()
+        self.memory = MemorySaver()
 
-    def process(self, state: Dict) -> Dict:
-        logger.info("Starting file listing process")
-        
-        all_files = self.list_all_files()
-        generated_lists = self.generate_lists_with_llm(all_files)
-        
-        approved_lists = self.get_user_approval(generated_lists)
-        
-        if approved_lists:
-            self.save_file_lists(approved_lists['project_files'], approved_lists['excluded_files'])
-            state['project_files'] = approved_lists['project_files']
-            state['excluded_files'] = approved_lists['excluded_files']
-            logger.info("File listing process completed successfully")
+    def _build_graph(self):
+        graph = StateGraph(State)
+
+        # Add nodes
+        graph.add_node("check_autocoder_dir", check_autocoder_dir)
+        graph.add_node("interpret_task", self._interpret_task)
+        graph.add_node("build_context", self._build_context)
+        graph.add_node("generate_modifications", self._generate_modifications)
+        graph.add_node("apply_modifications", self._apply_modifications)
+        graph.add_node("run_tests", self._run_tests)
+
+        # Define edges
+        graph.add_edge(START, "check_autocoder_dir")
+        graph.add_conditional_edges(
+            "check_autocoder_dir",
+            self._check_initialization,
+            {True: "interpret_task", False: END}
+        )
+        graph.add_edge("interpret_task", "build_context")
+        graph.add_edge("build_context", "generate_modifications")
+        graph.add_edge("generate_modifications", "apply_modifications")
+        graph.add_edge("apply_modifications", "run_tests")
+        graph.add_conditional_edges(
+            "run_tests",
+            self._handle_test_results,
+            {True: END, False: "generate_modifications"}
+        )
+
+        return graph.compile(checkpointer=self.memory)
+
+    def _check_initialization(self, state):
+        return state.get("autocoder_dir_exists", False) and self._check_file_listing_success(state)
+
+    def _check_file_listing_success(self, state):
+        return state.get("project_files") is not None and state.get("excluded_files") is not None
+
+    def _interpret_task(self, state: State):
+        interpreted_task = self.task_interpreter.interpret_task(state["messages"][-1].content)
+        logger.info(f"Task interpreted: {interpreted_task['task_type']}")
+        return {"interpreted_task": interpreted_task}
+
+    def _build_context(self, state: State):
+        files = self.file_manager.list_files()
+        file_contents = {f: self.file_manager.read_file(f) for f in files}
+        context = self.context_builder.build_context(file_contents)
+        logger.info("Context built successfully")
+        return {"files": file_contents, "context": context}
+
+    def _generate_modifications(self, state: State):
+        task_prompt = self.task_interpreter.get_prompt_for_task(state["interpreted_task"])
+        full_prompt = f"Context:\n{state['context']}\n\nTask:\n{task_prompt}"
+        modifications = self.claude_api.generate_response(full_prompt)
+        logger.info("Received response from Claude API")
+        return {"modifications": modifications}
+
+    def _apply_modifications(self, state: State):
+        for file in state["interpreted_task"]["affected_files"]:
+            if file in state["files"]:
+                original_code = state["files"][file]
+                modified_code = self.code_modifier.modify_code(original_code, state["modifications"])
+                self.file_manager.write_file(file, modified_code)
+                logger.info(f"Modified file: {file}")
+        return {}
+
+    def _run_tests(self, state: State):
+        success, test_result = self.test_runner.run_tests()
+        return {"test_results": test_result}
+
+    def _handle_test_results(self, state: State):
+        if "success" in state["test_results"]:
+            logger.info("Task completed successfully")
+            return True
         else:
-            logger.error("User did not approve file lists. Process aborted.")
-            return self._update_state_with_error(state, "User did not approve file lists")
+            error_report = self.error_handler.handle_error(state["test_results"])
+            logger.warning("Tests failed. See error report for details.")
+            return False
 
-        return state
-
-    def list_all_files(self) -> List[str]:
-        all_files = []
-        for root, _, files in os.walk(self.project_root):
-            for file in files:
-                all_files.append(os.path.relpath(os.path.join(root, file), self.project_root))
-        return all_files
-
-    def generate_lists_with_llm(self, all_files: List[str]) -> Dict[str, List[str]]:
-        prompt = f"""
-        You are an expert in software development and project organization. Given the following list of files in a project directory, categorize them into two lists:
-        1. Project Files: Files that are part of the project's source code, configuration, or documentation.
-        2. Excluded Files: Files that should be excluded from the project context, such as build artifacts, cache files, third-party dependencies, or automatically generated files.
-
-        Here's the list of all files in the project directory:
-
-        {', '.join(all_files)}
-
-        Consider the following when making your categorization:
-        - Common development patterns and best practices
-        - Files that are typically version controlled vs. those that are not
-        - Configuration files that are important for the project
-        - Automatically generated files or build artifacts
-        - Backup files or temporary files
-        - Dependencies or third-party libraries
-
-        Provide your response in the following format:
-
-        Project Files:
-        - [List of project files, one per line]
-
-        Excluded Files:
-        - [List of excluded files, one per line]
-
-        Be sure to categorize ALL files from the provided list.
-        """
-
-        response = self.claude_api.generate_response(prompt)
-        
-        # Parse the response
-        project_files = []
-        excluded_files = []
-        current_list = None
-        
-        for line in response.split('\n'):
-            line = line.strip()
-            if line == "Project Files:":
-                current_list = project_files
-            elif line == "Excluded Files:":
-                current_list = excluded_files
-            elif line.startswith("- ") and current_list is not None:
-                current_list.append(line[2:])
-
-        return {
-            "project_files": project_files,
-            "excluded_files": excluded_files
-        }
-
-    def get_user_approval(self, file_lists: Dict[str, List[str]]) -> Dict[str, List[str]] | None:
-        while True:
-            print("\nProject Files:")
-            for file in file_lists['project_files']:
-                print(f"  {file}")
-
-            print("\nExcluded Files:")
-            for file in file_lists['excluded_files']:
-                print(f"  {file}")
-
-            approval = input("\nDo you approve these file lists? (yes/no/quit): ").lower()
-
-            if approval == 'yes':
-                return file_lists
-            elif approval == 'no':
-                print("Please describe the changes you want to make:")
-                changes = input("Your changes: ")
-                file_lists = self.update_lists_with_llm(file_lists, changes)
-            elif approval == 'quit':
-                print("Process aborted by user.")
-                return None
-            else:
-                print("Invalid input. Please enter 'yes', 'no', or 'quit'.")
-
-    def update_lists_with_llm(self, current_lists: Dict[str, List[str]], user_changes: str) -> Dict[str, List[str]]:
-        prompt = f"""
-        Current file categorization:
-
-        Project Files:
-        {', '.join(current_lists['project_files'])}
-
-        Excluded Files:
-        {', '.join(current_lists['excluded_files'])}
-
-        User requested changes:
-        {user_changes}
-
-        Please update the file lists based on the user's request. Provide your response in the following format:
-
-        Project Files:
-        - [Updated list of project files, one per line]
-
-        Excluded Files:
-        - [Updated list of excluded files, one per line]
-        """
-
-        response = self.claude_api.generate_response(prompt)
-        
-        # Parse the response
-        project_files = []
-        excluded_files = []
-        current_list = None
-        
-        for line in response.split('\n'):
-            line = line.strip()
-            if line == "Project Files:":
-                current_list = project_files
-            elif line == "Excluded Files:":
-                current_list = excluded_files
-            elif line.startswith("- ") and current_list is not None:
-                current_list.append(line[2:])
-
-        return {
-            "project_files": project_files,
-            "excluded_files": excluded_files
-        }
-
-    def save_file_lists(self, project_files: List[str], excluded_files: List[str]):
-        autocoder_dir = os.path.join(self.project_root, '.autocoder')
-        os.makedirs(autocoder_dir, exist_ok=True)
-
-        with open(os.path.join(autocoder_dir, 'project_files'), 'w') as f:
-            f.write('\n'.join(project_files))
-
-        with open(os.path.join(autocoder_dir, 'excluded_files'), 'w') as f:
-            f.write('\n'.join(excluded_files))
-
-    def _update_state_with_error(self, state: Dict, error_message: str) -> Dict:
-        state['error'] = error_message
-        return state
-
-def file_listing_node(state: Dict) -> Dict:
-    logger.info("Executing file_listing_node")
-    file_lister = FileListingNode(state['project_root'], state['claude_api'])
-    return file_lister.process(state)
+    def execute(self, task_description, config=None):
+        try:
+            initial_state = {
+                "messages": [("user", task_description)],
+                "project_root": self.file_manager.project_root,
+                "claude_api": self.claude_api,
+                "autocoder_dir_exists": False  # Initialize this in the state
+            }
+            for event in self.graph.stream(initial_state, config):
+                if "messages" in event:
+                    print(event["messages"][-1])
+            return "Task execution completed."
+        except Exception as e:
+            error_report = self.error_handler.handle_error(e)
+            self.error_handler.log_error(e)
+            return error_report
 
 
 
@@ -1050,7 +661,7 @@ from .claude_api_wrapper import ClaudeAPIWrapper
 from .langgraph_workflow import LangGraphWorkflow
 from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder, \
     display_usage_message
-from .nodes.file_listing_node import FileListingNode
+from .file_listing.file_listing_node import FileListingNode
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -1075,7 +686,6 @@ def initialize_file_listing():
 
     # Load environment variables
     load_dotenv()
-    print("Environment variables:", os.environ)
     print("ANTHROPIC_API_KEY:", os.getenv('ANTHROPIC_API_KEY'))
     print("CLAUDE_API_KEY:", os.getenv('CLAUDE_API_KEY'))
     print("OPENAI_API_KEY:", os.getenv('OPENAI_API_KEY'))
@@ -1204,131 +814,6 @@ if __name__ == "__main__":
 
 
 
-#File ./src/autocoder/langgraph_workflow.py:
-import logging
-from typing import Annotated, TypedDict
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
-from langgraph.checkpoint.memory import MemorySaver
-from .state import State
-from .nodes.tools.directory_checker import check_autocoder_dir
-
-logger = logging.getLogger(__name__)
-
-class LangGraphWorkflow:
-    def __init__(self, file_manager, context_builder, task_interpreter,
-                 code_modifier, test_runner, error_handler, claude_api):
-        self.file_manager = file_manager
-        self.context_builder = context_builder
-        self.task_interpreter = task_interpreter
-        self.code_modifier = code_modifier
-        self.test_runner = test_runner
-        self.error_handler = error_handler
-        self.claude_api = claude_api
-        self.graph = self._build_graph()
-        self.memory = MemorySaver()
-
-    def _build_graph(self):
-        graph = StateGraph(State)
-
-        # Add nodes
-        graph.add_node("check_autocoder_dir", check_autocoder_dir)
-        graph.add_node("interpret_task", self._interpret_task)
-        graph.add_node("build_context", self._build_context)
-        graph.add_node("generate_modifications", self._generate_modifications)
-        graph.add_node("apply_modifications", self._apply_modifications)
-        graph.add_node("run_tests", self._run_tests)
-
-        # Define edges
-        graph.add_edge(START, "check_autocoder_dir")
-        graph.add_conditional_edges(
-            "check_autocoder_dir",
-            self._check_initialization,
-            {True: "interpret_task", False: END}
-        )
-        graph.add_edge("interpret_task", "build_context")
-        graph.add_edge("build_context", "generate_modifications")
-        graph.add_edge("generate_modifications", "apply_modifications")
-        graph.add_edge("apply_modifications", "run_tests")
-        graph.add_conditional_edges(
-            "run_tests",
-            self._handle_test_results,
-            {True: END, False: "generate_modifications"}
-        )
-
-        return graph.compile(checkpointer=self.memory)
-
-    def _check_initialization(self, state):
-        return state.get("autocoder_dir_exists", False) and self._check_file_listing_success(state)
-
-    def _check_file_listing_success(self, state):
-        return state.get("project_files") is not None and state.get("excluded_files") is not None
-
-    def _interpret_task(self, state: State):
-        interpreted_task = self.task_interpreter.interpret_task(state["messages"][-1].content)
-        logger.info(f"Task interpreted: {interpreted_task['task_type']}")
-        return {"interpreted_task": interpreted_task}
-
-    def _build_context(self, state: State):
-        files = self.file_manager.list_files()
-        file_contents = {f: self.file_manager.read_file(f) for f in files}
-        context = self.context_builder.build_context(file_contents)
-        logger.info("Context built successfully")
-        return {"files": file_contents, "context": context}
-
-    def _generate_modifications(self, state: State):
-        task_prompt = self.task_interpreter.get_prompt_for_task(state["interpreted_task"])
-        full_prompt = f"Context:\n{state['context']}\n\nTask:\n{task_prompt}"
-        modifications = self.claude_api.generate_response(full_prompt)
-        logger.info("Received response from Claude API")
-        return {"modifications": modifications}
-
-    def _apply_modifications(self, state: State):
-        for file in state["interpreted_task"]["affected_files"]:
-            if file in state["files"]:
-                original_code = state["files"][file]
-                modified_code = self.code_modifier.modify_code(original_code, state["modifications"])
-                self.file_manager.write_file(file, modified_code)
-                logger.info(f"Modified file: {file}")
-        return {}
-
-    def _run_tests(self, state: State):
-        success, test_result = self.test_runner.run_tests()
-        return {"test_results": test_result}
-
-    def _handle_test_results(self, state: State):
-        if "success" in state["test_results"]:
-            logger.info("Task completed successfully")
-            return True
-        else:
-            error_report = self.error_handler.handle_error(state["test_results"])
-            logger.warning("Tests failed. See error report for details.")
-            return False
-
-    def execute(self, task_description, config=None):
-        try:
-            initial_state = {
-                "messages": [("user", task_description)],
-                "project_root": self.file_manager.project_root,
-                "claude_api": self.claude_api,
-                "autocoder_dir_exists": False  # Initialize this in the state
-            }
-            for event in self.graph.stream(initial_state, config):
-                if "messages" in event:
-                    print(event["messages"][-1])
-            return "Task execution completed."
-        except Exception as e:
-            error_report = self.error_handler.handle_error(e)
-            self.error_handler.log_error(e)
-            return error_report
-
-
-
-
-
-
-
 #File ./tests/test_context_builder.py:
 import pytest
 import os
@@ -1407,81 +892,6 @@ def test_get_full_context(context_builder):
     context_builder.add_multiple_context({"key1": "value1", "key2": "value2"})
     full_context = context_builder.get_full_context()
     assert full_context == {"key1": "value1", "key2": "value2"}
-
-
-
-
-
-
-#File ./version.txt:
-0.0.5
-
-
-
-
-
-
-
-#File ./find.sh:
-find . -type f ! -name ".env" | grep -vi venv | grep -vi idea | grep -vi llm | grep -vi ".git" | grep -vi pycache | grep -vi attachments | grep -vi processor.db | grep -vi debug | grep -vi egg
-
-
-
-
-
-
-
-#File ./MANIFEST.in:
-include README.md LICENSE requirements.txt
-recursive-include src *.py
-recursive-include tests *.py
-include bin/autocoder
-global-exclude *.pyc *.pyo pycache
-
-
-
-
-
-
-
-#File ./files:
-./.env.example
-./README.md
-./conftest.py
-./list_manifest_files.py
-./release-script.sh
-./requirements.txt
-./setup.py
-./src/autocoder/__init__.py
-./src/autocoder/claude_api_wrapper.py
-./src/autocoder/context_builder.py
-./src/autocoder/error_handler.py
-./src/autocoder/file_manager.py
-./src/autocoder/task_interpreter.py
-./src/autocoder/test_runner.py
-./src/autocoder/state.py
-./src/autocoder/code_modifier.py
-./src/autocoder/nodes/tools/__init__.py
-./src/autocoder/nodes/tools/directory_checker.py
-./src/autocoder/nodes/__init__.py
-./src/autocoder/nodes/file_listing_node.py
-./src/autocoder/autocoder.py
-./src/autocoder/langgraph_workflow.py
-./tests/test_context_builder.py
-./version.txt
-./find.sh
-./MANIFEST.in
-./files
-./.autocoder/project_state.txt
-
-
-
-
-
-
-
-#File ./.autocoder/project_state.txt:
-initialized
 
 
 
