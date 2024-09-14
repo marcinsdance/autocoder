@@ -1,7 +1,9 @@
 from ..state import State
 from ..context_builder import ContextBuilder
 from ..file_manager import FileManager
+from ..error_handler import ErrorHandler
 
+@ErrorHandler.wrap_node
 def build_context(state: State) -> State:
     file_manager = FileManager(state["project_root"])
     context_builder = ContextBuilder()

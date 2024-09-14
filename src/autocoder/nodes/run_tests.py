@@ -1,7 +1,9 @@
 from ..state import State
 from ..test_runner import TestRunner
+from ..error_handler import ErrorHandler
 
 
+@ErrorHandler.wrap_node
 def run_tests(state: State) -> State:
     test_runner = TestRunner()
 

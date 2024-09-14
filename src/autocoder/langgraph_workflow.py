@@ -1,15 +1,15 @@
 import logging
 from typing import Dict, Any
 from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
 from .state import State
-from .nodes.tools.directory_checker import check_autocoder_dir
+from .nodes.check_autocoder_dir import check_autocoder_dir
 from .nodes.interpret_task import interpret_task
 from .nodes.build_context import build_context
 from .nodes.generate_modifications import generate_modifications
 from .nodes.apply_modifications import apply_modifications
 from .nodes.run_tests import run_tests
+from .error_handler import ErrorHandler
 
 logger = logging.getLogger(__name__)
 
@@ -57,17 +57,14 @@ class LangGraphWorkflow:
         return workflow.compile()
 
     def _check_initialization(self, state: State) -> bool:
-        return state.get("autocoder_dir_exists", False) and self._check_file_listing_success(state)
-
-    def _check_file_listing_success(self, state: State) -> bool:
-        return state.get("project_files") is not None and state.get("excluded_files") is not None
+        return state["autocoder_dir_exists"]
 
     def _handle_test_results(self, state: State) -> bool:
-        if "success" in state["test_results"]:
+        if state["test_results"]["success"]:
             logger.info("Task completed successfully")
             return True
         else:
-            error_report = self.error_handler.handle_error(state["test_results"])
+            error_report = self.error_handler.handle_error(state["test_results"]["details"])
             logger.warning("Tests failed. See error report for details.")
             return False
 
@@ -82,13 +79,15 @@ class LangGraphWorkflow:
                 context="",
                 interpreted_task={},
                 modifications="",
-                test_results=""
+                test_results={"success": False, "details": ""}
             )
             for event in self.graph.stream(initial_state, config):
+                if "error" in event:
+                    return f"An error occurred: {event['error']['error_message']}"
                 if "messages" in event:
                     print(event["messages"][-1])
             return "Task execution completed."
         except Exception as e:
             error_report = self.error_handler.handle_error(e)
             self.error_handler.log_error(e)
-            return error_report
+            return f"An unexpected error occurred: {error_report['error_message']}"

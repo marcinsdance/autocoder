@@ -1,7 +1,9 @@
 from ..state import State
 from ..task_interpreter import TaskInterpreter
+from ..error_handler import ErrorHandler
 
 
+@ErrorHandler.wrap_node
 def generate_modifications(state: State) -> State:
     task_interpreter = TaskInterpreter()
     claude_api = state["claude_api"]

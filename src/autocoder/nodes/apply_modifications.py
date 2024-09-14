@@ -1,7 +1,9 @@
 from ..state import State
 from ..code_modifier import CodeModifier
 from ..file_manager import FileManager
+from ..error_handler import ErrorHandler
 
+@ErrorHandler.wrap_node
 def apply_modifications(state: State) -> State:
     code_modifier = CodeModifier()
     file_manager = FileManager(state["project_root"])
