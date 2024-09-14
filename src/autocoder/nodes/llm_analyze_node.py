@@ -12,6 +12,35 @@ from anthropic import Anthropic
 class LLMAnalyzeArgs(BaseModel):
     pass  # No additional arguments needed; state contains necessary info
 
+def create_llm_analyze_node(claude_api):
+    def llm_analyze(state: Dict, args: LLMAnalyzeArgs) -> Dict:
+        try:
+            # Use Claude API to analyze the context
+            analysis = claude_api.completions.create(
+                model="claude-3-opus-20240229",
+                prompt=f"Analyze the following project context:\n\n{args.context}",
+                max_tokens=1000
+            ).completion
+
+            state['analysis_result'] = analysis
+            state['messages'] = state.get('messages', []) + [AIMessage(content="Analysis completed.")]
+            return state
+        except Exception as e:
+            state['error'] = str(e)
+            state['messages'] = state.get('messages', []) + [AIMessage(content=f"Error during analysis: {str(e)}")]
+            return state
+
+    llm_analyze_tools = [
+        Tool.from_function(
+            func=llm_analyze,
+            name="llm_analyze",
+            description="Analyze project context using LLM",
+            args_schema=LLMAnalyzeArgs
+        )
+    ]
+
+    return ToolNode(llm_analyze_tools)
+
 def llm_analyze(state: Dict, args: LLMAnalyzeArgs, claude_api) -> Dict:
     try:
         context = state['context']

@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class LangGraphWorkflow:
     def __init__(self, api_key: str):
-        self.claude_api = ClaudeAPIWrapper(api_key).client  # Use the client directly
+        self.claude_api = ClaudeAPIWrapper(api_key).client
         self.graph = self._build_graph()
         self.analyze_graph = self._build_analyze_graph()
         self.memory = MemorySaver()
@@ -68,28 +68,27 @@ class LangGraphWorkflow:
 
         return workflow.compile()
 
-    def _handle_analysis_result(self, state: State) -> bool:
-        # Check if we have an analysis result and it's not empty
-        return 'analysis_result' in state and bool(state['analysis_result'])
-
     def execute_analysis(self, config: Dict[str, Any] = None) -> str:
         try:
             initial_state = State(
-                messages=[HumanMessage(content="Please analyze the project.")],
+                messages=[AIMessage(content="Please analyze the project.")],  # Changed to AIMessage
                 project_root=config.get("project_root", ""),
                 context="",
                 analysis_result="",
                 error=None
             )
+            logger.info(f"Initial state: {initial_state}")
             state = initial_state
             for event in self.analyze_graph.stream(initial_state, config):
                 state.update(event)
+                logger.info(f"Event received: {event}")
                 if "error" in event:
                     logger.error(f"Error in event: {event['error']}")
                     return f"An error occurred: {event['error']}"
                 elif "messages" in event:
                     logger.debug(f"Received messages: {event['messages']}")
                     for i, message in enumerate(event["messages"]):
+                        logger.debug(f"Message {i} type: {type(message)}")
                         if not isinstance(message, BaseMessage):
                             logger.warning(f"Message {i} is not a BaseMessage instance: {type(message)}")
                             if isinstance(message, dict):
@@ -104,6 +103,7 @@ class LangGraphWorkflow:
                             else:
                                 event["messages"][i] = AIMessage(content=str(message))
                     last_message = event["messages"][-1]
+                    logger.info(f"Last message type: {type(last_message)}")
                     logger.info(f"Last message: {last_message.content}")
                 elif "analysis_result" in event:
                     logger.info("Received analysis result")
@@ -123,6 +123,10 @@ class LangGraphWorkflow:
         except Exception as e:
             logger.exception(f"An unexpected error occurred during analysis: {str(e)}")
             return f"An unexpected error occurred during analysis: {str(e)}"
+
+    def _handle_analysis_result(self, state: State) -> bool:
+        # Check if we have an analysis result and it's not empty
+        return 'analysis_result' in state and bool(state['analysis_result'])
 
     def _handle_task_execution_result(self, state: State) -> bool:
         """

@@ -6,6 +6,7 @@ from typing import Dict, List
 from langchain_core.tools import Tool
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
+from langchain_core.messages import AIMessage
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,8 @@ class AnalyzeFileListingNode:
             state.update({
                 'project_files': project_files,
                 'excluded_files': [str(pat) for pat in ignore_spec.patterns],
-                'context': context
+                'context': context,
+                'messages': state.get('messages', []) + [AIMessage(content="File listing completed.")]
             })
 
             logger.info(f"File listing completed for analysis. Found {len(project_files)} files.")
@@ -32,6 +34,7 @@ class AnalyzeFileListingNode:
         except Exception as e:
             logger.error(f"Error in AnalyzeFileListingNode: {str(e)}")
             state['error'] = str(e)
+            state['messages'] = state.get('messages', []) + [AIMessage(content=f"Error: {str(e)}")]
             return state
 
     @staticmethod
