@@ -9,12 +9,13 @@ from .task_interpreter import task_interpreter_node
 from .code_modifier import code_modifier_node
 from .test_runner import test_runner_node
 from .error_handler import ErrorHandler
+from .claude_api_wrapper import claude_api_node, ClaudeAPIWrapper
 
 logger = logging.getLogger(__name__)
 
 class LangGraphWorkflow:
-    def __init__(self, claude_api):
-        self.claude_api = claude_api
+    def __init__(self, api_key: str):
+        self.claude_api = ClaudeAPIWrapper(api_key)
         self.graph = self._build_graph()
         self.memory = MemorySaver()
 
@@ -25,20 +26,20 @@ class LangGraphWorkflow:
         workflow.add_node("file_manager", file_manager_node)
         workflow.add_node("context_builder", context_builder_node)
         workflow.add_node("task_interpreter", task_interpreter_node)
+        workflow.add_node("claude_api", claude_api_node)
         workflow.add_node("code_modifier", code_modifier_node)
         workflow.add_node("test_runner", test_runner_node)
 
         # Define edges
         workflow.set_entry_point("task_interpreter")
-        workflow.add_edge("task_interpreter", "file_manager")
-        workflow.add_edge("file_manager", "context_builder")
-        workflow.add_edge("context_builder", "code_modifier")
+        workflow.add_edge("task_interpreter", "claude_api")
+        workflow.add_edge("claude_api", "code_modifier")
         workflow.add_edge("code_modifier", "file_manager")
         workflow.add_edge("file_manager", "test_runner")
         workflow.add_conditional_edges(
             "test_runner",
             self._handle_test_results,
-            {True: END, False: "code_modifier"}
+            {True: END, False: "claude_api"}
         )
 
         return workflow.compile()
@@ -55,7 +56,7 @@ class LangGraphWorkflow:
     def execute(self, task_description: str, config: Dict[str, Any] = None) -> str:
         try:
             initial_state = State(
-                messages=[("user", task_description)],
+                messages=[{"role": "user", "content": task_description}],
                 project_root=config.get("project_root", ""),
                 claude_api=self.claude_api,
                 files={},
