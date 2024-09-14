@@ -76,22 +76,20 @@ class LangGraphWorkflow:
                 context="",
                 analysis_result="",
                 error=None,
-                iteration_count=0  # Add an iteration counter
+                iteration_count=0
             )
             logger.info(f"Initial state: {initial_state}")
 
-            # Set a higher recursion limit and maximum iterations
             config = config or {}
-            config['recursion_limit'] = 100  # Increased from 50
-            max_iterations = config.get('max_iterations', 10)  # Add a maximum iteration limit
+            config['recursion_limit'] = 100
+            max_iterations = config.get('max_iterations', 10)
 
             for event in self.analyze_graph.stream(initial_state, config):
                 logger.info(f"Event received: {event}")
 
-                # Increment the iteration count
                 event['iteration_count'] = event.get('iteration_count', 0) + 1
+                logger.info(f"Iteration count: {event['iteration_count']}")
 
-                # Check if we've reached the maximum iterations
                 if event['iteration_count'] >= max_iterations:
                     logger.warning(f"Reached maximum iterations ({max_iterations}). Ending analysis.")
                     return "Analysis completed (maximum iterations reached)."
@@ -124,14 +122,17 @@ class LangGraphWorkflow:
                     print("LLM Analysis of the Project:")
                     print(event["analysis_result"])
                     return "Analysis completed."
+                else:
+                    logger.warning(f"Unexpected event structure: {event}")
 
-                logger.warning("No analysis result was generated")
-                return "Analysis completed with no result."
+            logger.warning("No analysis result was generated")
+            return "Analysis completed with no result."
         except Exception as e:
             logger.exception(f"An unexpected error occurred during analysis: {str(e)}")
             return f"An unexpected error occurred during analysis: {str(e)}"
 
     def _handle_analysis_result(self, state: State) -> bool:
+        logger.info(f"Handling analysis result. Current state: {state}")
         # Check if we have an analysis result and it's not empty
         if 'analysis_result' in state and state['analysis_result'].strip():
             logger.info("Analysis result found. Ending the workflow.")
