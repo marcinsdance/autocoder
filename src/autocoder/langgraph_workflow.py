@@ -8,14 +8,13 @@ from .nodes.initialize_node import initialize_node
 from .nodes.error_handling_node import error_handling_node
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .nodes.task_execution_node import create_task_execution_node
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 
 # Import new nodes
 from .nodes.analyze_file_listing_node import analyze_file_listing_node
 from .nodes.llm_analyze_node import create_llm_analyze_node
 
 logger = logging.getLogger(__name__)
-
 
 class LangGraphWorkflow:
     def __init__(self, api_key: str):
@@ -85,26 +84,42 @@ class LangGraphWorkflow:
             for event in self.analyze_graph.stream(initial_state, config):
                 state.update(event)
                 if "error" in event:
-                    print(f"An error occurred: {event['error']}")
+                    logger.error(f"Error in event: {event['error']}")
                     return f"An error occurred: {event['error']}"
                 elif "messages" in event:
+                    logger.debug(f"Received messages: {event['messages']}")
+                    for i, message in enumerate(event["messages"]):
+                        if not isinstance(message, BaseMessage):
+                            logger.warning(f"Message {i} is not a BaseMessage instance: {type(message)}")
+                            if isinstance(message, dict):
+                                content = message.get('content', str(message))
+                                role = message.get('role', 'AI')
+                                if role.lower() == 'human':
+                                    event["messages"][i] = HumanMessage(content=content)
+                                elif role.lower() == 'system':
+                                    event["messages"][i] = SystemMessage(content=content)
+                                else:
+                                    event["messages"][i] = AIMessage(content=content)
+                            else:
+                                event["messages"][i] = AIMessage(content=str(message))
                     last_message = event["messages"][-1]
-                    if not isinstance(last_message, AIMessage):
-                        event["messages"][-1] = AIMessage(content=str(last_message.content))
-                    print(f"AI: {event['messages'][-1].content}")
+                    logger.info(f"Last message: {last_message.content}")
                 elif "analysis_result" in event:
+                    logger.info("Received analysis result")
                     print("LLM Analysis of the Project:")
                     print(event["analysis_result"])
 
             if "analysis_result" in state:
+                logger.info("Final analysis result found")
                 print("Final LLM Analysis of the Project:")
                 print(state["analysis_result"])
                 return "Analysis completed."
             else:
+                logger.warning("No analysis result was generated")
                 print("No analysis result was generated.")
                 return "Analysis completed with no result."
         except Exception as e:
-            logger.error(f"An unexpected error occurred during analysis: {str(e)}")
+            logger.exception(f"An unexpected error occurred during analysis: {str(e)}")
             return f"An unexpected error occurred during analysis: {str(e)}"
 
     def execute(self, task_description: str, config: Dict[str, Any] = None) -> str:
@@ -122,11 +137,23 @@ class LangGraphWorkflow:
                 if "error" in event:
                     return f"An error occurred: {event['error']}"
                 if "messages" in event:
+                    for i, message in enumerate(event["messages"]):
+                        if not isinstance(message, BaseMessage):
+                            if isinstance(message, dict):
+                                content = message.get('content', str(message))
+                                role = message.get('role', 'AI')
+                                if role.lower() == 'human':
+                                    event["messages"][i] = HumanMessage(content=content)
+                                elif role.lower() == 'system':
+                                    event["messages"][i] = SystemMessage(content=content)
+                                else:
+                                    event["messages"][i] = AIMessage(content=content)
+                            else:
+                                event["messages"][i] = AIMessage(content=str(message))
                     last_message = event["messages"][-1]
-                    if not isinstance(last_message, AIMessage):
-                        event["messages"][-1] = AIMessage(content=str(last_message.content))
-                    print(f"AI: {event['messages'][-1].content}")
+                    print(f"AI: {last_message.content}")
             return "Task execution completed."
         except Exception as e:
-            logger.error(f"An unexpected error occurred: {str(e)}")
+            logger.exception(f"An unexpected error occurred: {str(e)}")
             return f"An unexpected error occurred: {str(e)}"
+

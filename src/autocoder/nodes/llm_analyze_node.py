@@ -5,6 +5,9 @@ from pydantic import BaseModel
 from anthropic import HUMAN_PROMPT, AI_PROMPT
 from functools import partial
 from langchain_core.messages import AIMessage  # Import AIMessage
+from typing import Dict, Any
+from langchain_core.messages import AIMessage, HumanMessage
+from anthropic import Anthropic
 
 class LLMAnalyzeArgs(BaseModel):
     pass  # No additional arguments needed; state contains necessary info
@@ -32,14 +35,44 @@ def llm_analyze(state: Dict, args: LLMAnalyzeArgs, claude_api) -> Dict:
         state['error'] = f"Error during LLM analysis: {str(e)}"
         return state
 
-def create_llm_analyze_node(claude_api):
-    llm_analyze_partial = partial(llm_analyze, claude_api=claude_api)
-    llm_analyze_tools = [
-        Tool.from_function(
-            func=llm_analyze_partial,
-            name="llm_analyze",
-            description="Send project context to LLM for analysis",
-            args_schema=LLMAnalyzeArgs
-        )
-    ]
-    return ToolNode(llm_analyze_tools)
+
+def create_llm_analyze_node(claude_client: Anthropic):
+    def llm_analyze(state: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            project_files = state.get('project_files', [])
+            context = state.get('context', '')
+
+            prompt = f"""Analyze the following project structure and provide insights:
+
+Project Files:
+{', '.join(project_files)}
+
+Context:
+{context}
+
+Please provide a comprehensive analysis of the project structure, including:
+1. Overall project organization
+2. Key components and their purposes
+3. Potential areas for improvement or refactoring
+4. Any best practices that are being followed or could be implemented
+"""
+
+            response = claude_client.messages.create(
+                model="claude-3-opus-20240229",
+                max_tokens=1000,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+
+            analysis_result = response.content[0].text
+
+            # Ensure we're returning an AIMessage
+            return {
+                "messages": [AIMessage(content=analysis_result)],
+                "analysis_result": analysis_result
+            }
+        except Exception as e:
+            return {"error": f"An error occurred during analysis: {str(e)}"}
+
+    return llm_analyze
