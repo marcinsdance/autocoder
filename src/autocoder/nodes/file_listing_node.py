@@ -1,5 +1,3 @@
-# File: src/autocoder/nodes/file_listing_node.py
-
 import os
 import logging
 from pathlib import Path

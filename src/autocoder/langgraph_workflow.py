@@ -9,19 +9,17 @@ from .nodes.error_handling_node import error_handling_node
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .nodes.task_execution_node import create_task_execution_node
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
-
-# Import new nodes
-from .nodes.analyze_file_listing_node import analyze_file_listing_node
-from .nodes.llm_analyze_node import create_llm_analyze_node
+from .file_listing.file_listing_node import FileListingNode
 
 logger = logging.getLogger(__name__)
 
+
 class LangGraphWorkflow:
     def __init__(self, api_key: str):
-        self.claude_api = ClaudeAPIWrapper(api_key).client
+        self.claude_api = ClaudeAPIWrapper(api_key)
         self.graph = self._build_graph()
-        self.analyze_graph = self._build_analyze_graph()
         self.memory = MemorySaver()
+        self.file_lister = FileListingNode(project_root="", claude_api=self.claude_api)
 
     def _build_graph(self) -> StateGraph:
         workflow = StateGraph(State)
@@ -29,7 +27,7 @@ class LangGraphWorkflow:
         # Define nodes
         workflow.add_node("initialize", initialize_node)
         workflow.add_node("file_listing", file_listing_node)
-        workflow.add_node("task_execution", create_task_execution_node(self.claude_api))
+        workflow.add_node("task_execution", create_task_execution_node(self.claude_api.client))
         workflow.add_node("error_handling", error_handling_node)
 
         # Define edges
@@ -45,104 +43,67 @@ class LangGraphWorkflow:
 
         return workflow.compile()
 
-    def _build_analyze_graph(self) -> StateGraph:
-        workflow = StateGraph(State)
-
-        # Define nodes
-        workflow.add_node("analyze_file_listing", analyze_file_listing_node)
-        workflow.add_node("llm_analyze", create_llm_analyze_node(self.claude_api))
-
-        # Define edges
-        workflow.set_entry_point("analyze_file_listing")
-        workflow.add_edge("analyze_file_listing", "llm_analyze")
-
-        # Add a conditional edge to end the workflow
-        workflow.add_conditional_edges(
-            "llm_analyze",
-            self._handle_analysis_result,
-            {
-                True: END,
-                False: "analyze_file_listing"  # Loop back if analysis is not complete
-            }
-        )
-
-        return workflow.compile()
-
     def execute_analysis(self, config: Dict[str, Any] = None) -> str:
         try:
-            initial_state = State(
-                messages=[AIMessage(content="Please analyze the project.")],
-                project_root=config.get("project_root", ""),
-                context="",
-                analysis_result="",
-                error=None,
-                iteration_count=0
+            project_root = config.get("project_root", "")
+            logger.info(f"Analyzing project in: {project_root}")
+
+            # Update the file_lister's project_root
+            self.file_lister.project_root = project_root
+
+            # Create an initial state for the file listing process
+            initial_state = {
+                "project_root": project_root,
+                "claude_api": self.claude_api,
+                "messages": [],
+                "context": "",
+                "files": {},
+                "error": None
+            }
+
+            # Get file listing and context
+            file_listing_result = self.file_lister.process(initial_state)
+
+            if 'error' in file_listing_result:
+                logger.error(f"Error in file listing: {file_listing_result['error']}")
+                return f"An error occurred during file listing: {file_listing_result['error']}"
+
+            context = file_listing_result.get('context', '')
+
+            # Prepare the prompt for the LLM
+            prompt = f"""Please analyze the following project structure and file contents:
+
+{context}
+
+Provide a comprehensive analysis of the project, including:
+1. The overall structure and organization of the project
+2. Main components and their purposes
+3. Key functionalities implemented
+4. Any patterns or architectural decisions you notice
+5. Potential areas for improvement or optimization
+
+Your analysis should be detailed and insightful, offering a clear understanding of the project's purpose and implementation."""
+
+            # Call the LLM for analysis
+            response = self.claude_api.generate_response(
+                state={},  # We don't need to pass any state
+                args={
+                    "messages": [HumanMessage(content=prompt)],
+                    "max_tokens": 2000
+                }
             )
-            logger.info(f"Initial state: {initial_state}")
 
-            config = config or {}
-            config['recursion_limit'] = 100
-            max_iterations = config.get('max_iterations', 10)
+            if 'error' in response:
+                logger.error(f"Error in LLM analysis: {response['error']}")
+                return f"An error occurred during LLM analysis: {response['error']}"
 
-            for event in self.analyze_graph.stream(initial_state, config):
-                logger.info(f"Event received: {event}")
+            analysis_result = response['response']
+            logger.info("Analysis completed successfully")
+            return f"Analysis completed. Results:\n\n{analysis_result}"
 
-                event['iteration_count'] = event.get('iteration_count', 0) + 1
-                logger.info(f"Iteration count: {event['iteration_count']}")
-
-                if event['iteration_count'] >= max_iterations:
-                    logger.warning(f"Reached maximum iterations ({max_iterations}). Ending analysis.")
-                    return "Analysis completed (maximum iterations reached)."
-
-                if "error" in event:
-                    logger.error(f"Error in event: {event['error']}")
-                    return f"An error occurred: {event['error']}"
-                elif "messages" in event:
-                    logger.debug(f"Received messages: {event['messages']}")
-                    for i, message in enumerate(event["messages"]):
-                        logger.debug(f"Message {i} type: {type(message)}")
-                        if not isinstance(message, BaseMessage):
-                            logger.warning(f"Message {i} is not a BaseMessage instance: {type(message)}")
-                            if isinstance(message, dict):
-                                content = message.get('content', str(message))
-                                role = message.get('role', 'AI')
-                                if role.lower() == 'human':
-                                    event["messages"][i] = HumanMessage(content=content)
-                                elif role.lower() == 'system':
-                                    event["messages"][i] = SystemMessage(content=content)
-                                else:
-                                    event["messages"][i] = AIMessage(content=content)
-                            else:
-                                event["messages"][i] = AIMessage(content=str(message))
-                    last_message = event["messages"][-1]
-                    logger.info(f"Last message type: {type(last_message)}")
-                    logger.info(f"Last message: {last_message.content}")
-                elif "analysis_result" in event:
-                    logger.info("Received analysis result")
-                    print("LLM Analysis of the Project:")
-                    print(event["analysis_result"])
-                    return "Analysis completed."
-                else:
-                    logger.warning(f"Unexpected event structure: {event}")
-
-            logger.warning("No analysis result was generated")
-            return "Analysis completed with no result."
         except Exception as e:
             logger.exception(f"An unexpected error occurred during analysis: {str(e)}")
             return f"An unexpected error occurred during analysis: {str(e)}"
-
-    def _handle_analysis_result(self, state: State) -> bool:
-        logger.info(f"Handling analysis result. Current state: {state}")
-        # Check if we have an analysis result and it's not empty
-        if 'analysis_result' in state and state['analysis_result'].strip():
-            logger.info("Analysis result found. Ending the workflow.")
-            return True
-        elif state.get('error'):
-            logger.error(f"Error encountered: {state['error']}. Ending the workflow.")
-            return True
-        else:
-            logger.info("No analysis result yet. Continuing the workflow.")
-            return False
 
     def _handle_task_execution_result(self, state: State) -> bool:
         """
@@ -187,7 +148,7 @@ class LangGraphWorkflow:
             initial_state = State(
                 messages=[HumanMessage(content=task_description)],
                 project_root=config.get("project_root", ""),
-                claude_api=self.claude_api,
+                claude_api=self.claude_api.client,
                 files={},
                 context="",
                 task_completed=False,
