@@ -5,7 +5,12 @@ from dotenv import load_dotenv
 from typing import Dict, Any
 
 from .langgraph_workflow import LangGraphWorkflow
-from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder, display_usage_message
+from .nodes.tools.directory_checker import (
+    check_autocoder_dir,
+    display_init_message,
+    init_autocoder,
+    display_usage_message,
+)
 from .error_handler import ErrorHandler
 
 logging.basicConfig(level=logging.INFO)
@@ -63,31 +68,45 @@ def execute_task(task_description):
 def execute_analyze():
     if not check_autocoder_dir():
         logger.error("Autocoder is not initialized in this directory.")
-        print("Autocoder is not initialized in this directory. Please run 'autocoder init' first.")
+        print(
+            "Autocoder is not initialized in this directory. Please run 'autocoder init' first."
+        )
         return
 
     load_dotenv()
-    api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
+    api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY")
     if not api_key:
         logger.error("No API key found. Cannot proceed with analysis.")
-        print("Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file.")
+        print(
+            "Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file."
+        )
         return
 
     try:
         workflow = LangGraphWorkflow(api_key)
         print("Analyzing project...")
-        analysis_result = workflow.execute_analysis({"project_root": os.getcwd()})
-        print(analysis_result)
+        result = workflow.execute_analysis({"project_root": os.getcwd()})
+        if result != "Analysis completed.":
+            print(result)
     except Exception as e:
         logger.error(f"Failed to execute analysis: {str(e)}")
         print(f"Error: Failed to execute analysis: {str(e)}")
 
 def main():
     parser = argparse.ArgumentParser(description="Claude Automated Coding")
-    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "analyze", "help"],
-                        help="Command to execute")
-    parser.add_argument("task_description", nargs='?', default="",
-                        help="The task description for the automated coding process")
+    parser.add_argument(
+        "command",
+        nargs="?",
+        default="help",
+        choices=["init", "task", "analyze", "help"],
+        help="Command to execute",
+    )
+    parser.add_argument(
+        "task_description",
+        nargs="?",
+        default="",
+        help="The task description for the automated coding process",
+    )
     args = parser.parse_args()
 
     logger.debug(f"Received command: {args.command}")
@@ -112,7 +131,9 @@ def main():
             logger.info("Displaying usage message for initialized directory.")
             display_usage_message()
         else:
-            logger.info("Displaying initialization message for uninitialized directory.")
+            logger.info(
+                "Displaying initialization message for uninitialized directory."
+            )
             display_init_message()
     else:
         logger.error(f"Unknown command: {args.command}")

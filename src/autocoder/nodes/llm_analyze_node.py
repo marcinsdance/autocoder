@@ -1,11 +1,10 @@
-# File: src/autocoder/nodes/llm_analyze_node.py
-
 from typing import Dict
 from langchain_core.tools import Tool
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel
 from anthropic import HUMAN_PROMPT, AI_PROMPT
 from functools import partial
+from langchain_core.messages import AIMessage  # Import AIMessage
 
 class LLMAnalyzeArgs(BaseModel):
     pass  # No additional arguments needed; state contains necessary info
@@ -17,13 +16,17 @@ def llm_analyze(state: Dict, args: LLMAnalyzeArgs, claude_api) -> Dict:
         prompt = f"{HUMAN_PROMPT} Please analyze the following project code and provide a detailed analysis:\n{context}{AI_PROMPT}"
 
         response = claude_api.completions.create(
-            model="claude-instant-v1",  # Adjust the model as needed
+            model="claude-instant-v1",
             prompt=prompt,
             max_tokens_to_sample=1000,
             stop_sequences=[HUMAN_PROMPT]
         )
 
-        state['analysis_result'] = response.completion.strip()
+        analysis_result = response.completion.strip()
+        state['analysis_result'] = analysis_result
+
+        # Append the LLM's response as an AIMessage
+        state['messages'].append(AIMessage(content=analysis_result))
         return state
     except Exception as e:
         state['error'] = f"Error during LLM analysis: {str(e)}"

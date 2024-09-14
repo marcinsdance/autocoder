@@ -8,12 +8,14 @@ from .nodes.initialize_node import initialize_node
 from .nodes.error_handling_node import error_handling_node
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .nodes.task_execution_node import create_task_execution_node
+from langchain_core.messages import HumanMessage, AIMessage
 
 # Import new nodes
 from .nodes.analyze_file_listing_node import analyze_file_listing_node
 from .nodes.llm_analyze_node import create_llm_analyze_node
 
 logger = logging.getLogger(__name__)
+
 
 class LangGraphWorkflow:
     def __init__(self, api_key: str):
@@ -37,7 +39,7 @@ class LangGraphWorkflow:
         workflow.add_edge("file_listing", "task_execution")
         workflow.add_conditional_edges(
             "task_execution",
-            self._handle_task_result,
+            self._handle_task_execution_result,  # Changed from _handle_task_result
             {True: END, False: "error_handling"}
         )
         workflow.add_edge("error_handling", "task_execution")
@@ -67,32 +69,48 @@ class LangGraphWorkflow:
     def _handle_analysis_result(self, state: State) -> bool:
         return 'analysis_result' in state
 
+    def _handle_task_execution_result(self, state: State) -> bool:  # New method name
+        return state.get("task_completed", False)
+
     def execute_analysis(self, config: Dict[str, Any] = None) -> str:
         try:
             initial_state = State(
+                messages=[HumanMessage(content="Please analyze the project.")],
                 project_root=config.get("project_root", ""),
-                # Remove 'claude_api' from the state
                 context="",
                 analysis_result="",
                 error=None
             )
+            state = initial_state
             for event in self.analyze_graph.stream(initial_state, config):
+                state.update(event)
                 if "error" in event:
+                    print(f"An error occurred: {event['error']}")
                     return f"An error occurred: {event['error']}"
-                if "analysis_result" in event:
+                elif "messages" in event:
+                    last_message = event["messages"][-1]
+                    if not isinstance(last_message, AIMessage):
+                        event["messages"][-1] = AIMessage(content=str(last_message.content))
+                    print(f"AI: {event['messages'][-1].content}")
+                elif "analysis_result" in event:
+                    print("LLM Analysis of the Project:")
                     print(event["analysis_result"])
-            return "Analysis completed."
+
+            if "analysis_result" in state:
+                print("Final LLM Analysis of the Project:")
+                print(state["analysis_result"])
+                return "Analysis completed."
+            else:
+                print("No analysis result was generated.")
+                return "Analysis completed with no result."
         except Exception as e:
             logger.error(f"An unexpected error occurred during analysis: {str(e)}")
             return f"An unexpected error occurred during analysis: {str(e)}"
 
-    def _handle_task_result(self, state: State) -> bool:
-        return state["task_completed"]
-
     def execute(self, task_description: str, config: Dict[str, Any] = None) -> str:
         try:
             initial_state = State(
-                messages=[{"role": "user", "content": task_description}],
+                messages=[HumanMessage(content=task_description)],
                 project_root=config.get("project_root", ""),
                 claude_api=self.claude_api,
                 files={},
@@ -104,7 +122,10 @@ class LangGraphWorkflow:
                 if "error" in event:
                     return f"An error occurred: {event['error']}"
                 if "messages" in event:
-                    print(event["messages"][-1])
+                    last_message = event["messages"][-1]
+                    if not isinstance(last_message, AIMessage):
+                        event["messages"][-1] = AIMessage(content=str(last_message.content))
+                    print(f"AI: {event['messages'][-1].content}")
             return "Task execution completed."
         except Exception as e:
             logger.error(f"An unexpected error occurred: {str(e)}")

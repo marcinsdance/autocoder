@@ -3,7 +3,7 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage
 
 class State(TypedDict):
-    messages: Annotated[List[BaseMessage], add_messages]
+    messages: Annotated[List[BaseMessage], add_messages]  # Ensure this line exists
     files: Dict[str, str]
     context: str
     interpreted_task: Dict[str, any]
