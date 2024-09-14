@@ -42,10 +42,10 @@ The available commands for execution are listed below.
 Commands:
   init          Init autocoder in this directory
   task          Execute a task in an initialized directory
+  analyze       Analyze the project in an initialized directory
   help          Display help information
 """
     print(message)
-
 
 def display_usage_message():
     message = """
@@ -54,6 +54,7 @@ The available commands for execution are listed below.
 Commands:
   init          Init autocoder in this directory
   task          Execute a task in an initialized directory
+  analyze       Analyze the project in an initialized directory
   help          Display help information
 """
     print(message)
@@ -393,36 +394,165 @@ def run_tests(state: State) -> State:
 
 
 #File ./src/autocoder/nodes/task_execution_node.py:
+# File: src/autocoder/nodes/task_execution_node.py
+
 from typing import Dict
 from langchain_core.tools import Tool
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
+from functools import partial
 
 
 class TaskExecutionArgs(BaseModel):
     task_description: str = Field(..., description="Description of the task to execute")
 
 
-def execute_task(state: Dict, args: TaskExecutionArgs) -> Dict:
-    # Implement task execution logic here
-    # This should include the logic from the original execute_task function
-    # You may need to break this down into smaller steps and use the Claude API
+def execute_task(state: Dict, args: TaskExecutionArgs, claude_api) -> Dict:
+    try:
+        # Build the prompt using the task description and context
+        prompt = f"{HUMAN_PROMPT} Based on the following context, please perform the task: {args.task_description}\n\nContext:\n{state['context']}\n{AI_PROMPT}"
 
-    # For demonstration purposes:
-    state["task_completed"] = True
-    return state
+        # Call the LLM
+        response = claude_api.completions.create(
+            model="claude-instant-v1",
+            prompt=prompt,
+            max_tokens_to_sample=1000,
+            stop_sequences=[HUMAN_PROMPT]
+        )
+
+        # Process the response
+        state["task_result"] = response.completion.strip()
+        state["task_completed"] = True
+        return state
+    except Exception as e:
+        state["error"] = f"Error during task execution: {str(e)}"
+        return state
 
 
-task_execution_tools = [
+def create_task_execution_node(claude_api):
+    execute_task_partial = partial(execute_task, claude_api=claude_api)
+    task_execution_tools = [
+        Tool.from_function(
+            func=execute_task_partial,
+            name="execute_task",
+            description="Execute the given task",
+            args_schema=TaskExecutionArgs
+        )
+    ]
+    return ToolNode(task_execution_tools)
+
+
+
+
+
+
+
+#File ./src/autocoder/nodes/analyze_file_listing_node.py:
+import os
+import logging
+from pathlib import Path
+import pathspec
+from typing import Dict, List
+from langchain_core.tools import Tool
+from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel, Field
+from langchain_core.messages import AIMessage
+
+logger = logging.getLogger(__name__)
+
+class AnalyzeFileListingArgs(BaseModel):
+    project_root: str = Field(..., description="Root directory of the project")
+
+class AnalyzeFileListingNode:
+    @staticmethod
+    def process(state: Dict, args: AnalyzeFileListingArgs) -> Dict:
+        try:
+            project_root = Path(args.project_root)
+            ignore_spec = AnalyzeFileListingNode.get_ignore_spec(project_root)
+            project_files = AnalyzeFileListingNode.list_project_files(project_root, ignore_spec)
+            context = AnalyzeFileListingNode.build_context(project_root, project_files)
+
+            state.update({
+                'project_files': project_files,
+                'excluded_files': [str(pat) for pat in ignore_spec.patterns],
+                'context': context,
+                'messages': state.get('messages', []) + [AIMessage(content="File listing and context building completed.")]
+            })
+
+            logger.info(f"File listing completed for analysis. Found {len(project_files)} files.")
+            return state
+        except Exception as e:
+            logger.error(f"Error in AnalyzeFileListingNode: {str(e)}")
+            state['error'] = str(e)
+            state['messages'] = state.get('messages', []) + [AIMessage(content=f"Error: {str(e)}")]
+            return state
+
+    @staticmethod
+    def get_ignore_spec(project_root: Path) -> pathspec.PathSpec:
+        patterns = []
+        gitignore_path = project_root / '.gitignore'
+        if gitignore_path.exists():
+            with gitignore_path.open('r') as f:
+                patterns.extend(f.read().splitlines())
+            logger.info("Read .gitignore and compiled ignore patterns.")
+        else:
+            logger.warning(".gitignore file not found.")
+
+        default_ignores = [
+            '.git/', '.hg/', '.svn/', '.idea/', '*.egg-info/',
+            '__pycache__/', '.DS_Store', '*.pyc', '.venv/',
+            'env/', 'build/', 'dist/', 'node_modules/',
+            '*.log', '*.tmp',
+        ]
+        patterns.extend(default_ignores)
+        return pathspec.PathSpec.from_lines('gitwildmatch', patterns)
+
+    @staticmethod
+    def list_project_files(project_root: Path, ignore_spec: pathspec.PathSpec) -> List[str]:
+        project_files = []
+        for root, dirs, files in os.walk(project_root):
+            root_relative = os.path.relpath(root, project_root)
+            if root_relative == '.':
+                root_relative = ''
+            dirs[:] = [d for d in dirs if not ignore_spec.match_file(os.path.join(root_relative, d) + '/')]
+            for file in files:
+                rel_path = os.path.join(root_relative, file)
+                if not ignore_spec.match_file(rel_path):
+                    project_files.append(rel_path)
+        return project_files
+
+    @staticmethod
+    def build_context(project_root: Path, project_files: List[str]) -> str:
+        context = "Project Files:\n"
+        context += "\n".join(project_files)
+        context += "\n\nFile Contents:\n"
+
+        for file in project_files[:10]:  # Limit to first 10 files to avoid overwhelming the LLM
+            file_path = project_root / file
+            try:
+                with file_path.open('r', encoding='utf-8') as f:
+                    content = f.read()
+                context += f'\n\n#File {file}:\n{content[:1000]}'  # Limit each file to first 1000 characters
+            except Exception as e:
+                logger.warning(f"Could not read file {file}: {str(e)}")
+
+        return context
+
+
+def analyze_file_listing(state: Dict, args: AnalyzeFileListingArgs) -> Dict:
+    return AnalyzeFileListingNode.process(state, args)
+
+
+analyze_file_listing_tools = [
     Tool.from_function(
-        func=execute_task,
-        name="execute_task",
-        description="Execute the given task",
-        args_schema=TaskExecutionArgs
+        func=analyze_file_listing,
+        name="analyze_file_listing",
+        description="List project files and build context for analysis",
+        args_schema=AnalyzeFileListingArgs
     )
 ]
 
-task_execution_node = ToolNode(task_execution_tools)
+analyze_file_listing_node = ToolNode(analyze_file_listing_tools)
 
 
 
@@ -577,8 +707,6 @@ __all__ = [
 
 
 #File ./src/autocoder/autocoder.py:
-# File: src/autocoder/autocoder.py
-
 import argparse
 import logging
 import os
@@ -586,10 +714,15 @@ from dotenv import load_dotenv
 from typing import Dict, Any
 
 from .langgraph_workflow import LangGraphWorkflow
-from .nodes.tools.directory_checker import check_autocoder_dir, display_init_message, init_autocoder, display_usage_message
+from .nodes.tools.directory_checker import (
+    check_autocoder_dir,
+    display_init_message,
+    init_autocoder,
+    display_usage_message,
+)
 from .error_handler import ErrorHandler
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 def initialize_autocoder():
@@ -641,12 +774,48 @@ def execute_task(task_description):
         logger.error(f"Failed to execute task: {str(e)}")
         print(f"Error: Failed to execute task: {str(e)}")
 
+def execute_analyze():
+    if not check_autocoder_dir():
+        logger.error("Autocoder is not initialized in this directory.")
+        print(
+            "Autocoder is not initialized in this directory. Please run 'autocoder init' first."
+        )
+        return
+
+    load_dotenv()
+    api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY")
+    if not api_key:
+        logger.error("No API key found. Cannot proceed with analysis.")
+        print(
+            "Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file."
+        )
+        return
+
+    try:
+        workflow = LangGraphWorkflow(api_key)
+        print("Analyzing project...")
+        result = workflow.execute_analysis({"project_root": os.getcwd()})
+        if result != "Analysis completed.":
+            print(result)
+    except Exception as e:
+        logger.error(f"Failed to execute analysis: {str(e)}")
+        print(f"Error: Failed to execute analysis: {str(e)}")
+
 def main():
     parser = argparse.ArgumentParser(description="Claude Automated Coding")
-    parser.add_argument("command", nargs='?', default="help", choices=["init", "task", "help"],
-                        help="Command to execute")
-    parser.add_argument("task_description", nargs='?', default="",
-                        help="The task description for the automated coding process")
+    parser.add_argument(
+        "command",
+        nargs="?",
+        default="help",
+        choices=["init", "task", "analyze", "help"],
+        help="Command to execute",
+    )
+    parser.add_argument(
+        "task_description",
+        nargs="?",
+        default="",
+        help="The task description for the automated coding process",
+    )
     args = parser.parse_args()
 
     logger.debug(f"Received command: {args.command}")
@@ -663,12 +832,17 @@ def main():
             logger.error("No task description provided for 'task' command.")
             print("Error: Task description is required for the 'task' command.")
             display_usage_message()
+    elif args.command == "analyze":
+        logger.info("Analyzing project...")
+        execute_analyze()
     elif args.command == "help" or not args.command:
         if check_autocoder_dir():
             logger.info("Displaying usage message for initialized directory.")
             display_usage_message()
         else:
-            logger.info("Displaying initialization message for uninitialized directory.")
+            logger.info(
+                "Displaying initialization message for uninitialized directory."
+            )
             display_init_message()
     else:
         logger.error(f"Unknown command: {args.command}")
@@ -947,16 +1121,23 @@ from langgraph.checkpoint.memory import MemorySaver
 from .state import State
 from .nodes.file_listing_node import file_listing_node
 from .nodes.initialize_node import initialize_node
-from .nodes.task_execution_node import task_execution_node
 from .nodes.error_handling_node import error_handling_node
-from .claude_api_wrapper import claude_api_node, ClaudeAPIWrapper
+from .claude_api_wrapper import ClaudeAPIWrapper
+from .nodes.task_execution_node import create_task_execution_node
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
+
+# Import new nodes
+from .nodes.analyze_file_listing_node import analyze_file_listing_node
+from .nodes.llm_analyze_node import create_llm_analyze_node
 
 logger = logging.getLogger(__name__)
 
+
 class LangGraphWorkflow:
     def __init__(self, api_key: str):
-        self.claude_api = ClaudeAPIWrapper(api_key)
+        self.claude_api = ClaudeAPIWrapper(api_key).client
         self.graph = self._build_graph()
+        self.analyze_graph = self._build_analyze_graph()
         self.memory = MemorySaver()
 
     def _build_graph(self) -> StateGraph:
@@ -965,32 +1146,151 @@ class LangGraphWorkflow:
         # Define nodes
         workflow.add_node("initialize", initialize_node)
         workflow.add_node("file_listing", file_listing_node)
-        workflow.add_node("task_execution", task_execution_node)
-        workflow.add_node("claude_api", claude_api_node)
+        workflow.add_node("task_execution", create_task_execution_node(self.claude_api))
         workflow.add_node("error_handling", error_handling_node)
 
         # Define edges
         workflow.set_entry_point("initialize")
         workflow.add_edge("initialize", "file_listing")
         workflow.add_edge("file_listing", "task_execution")
-        workflow.add_edge("task_execution", "claude_api")
-        workflow.add_edge("claude_api", "task_execution")
         workflow.add_conditional_edges(
             "task_execution",
-            self._handle_task_result,
+            self._handle_task_execution_result,
             {True: END, False: "error_handling"}
         )
         workflow.add_edge("error_handling", "task_execution")
 
         return workflow.compile()
 
-    def _handle_task_result(self, state: State) -> bool:
-        return state["task_completed"]
+    def _build_analyze_graph(self) -> StateGraph:
+        workflow = StateGraph(State)
+
+        # Define nodes
+        workflow.add_node("analyze_file_listing", analyze_file_listing_node)
+        workflow.add_node("llm_analyze", create_llm_analyze_node(self.claude_api))
+
+        # Define edges
+        workflow.set_entry_point("analyze_file_listing")
+        workflow.add_edge("analyze_file_listing", "llm_analyze")
+
+        # Add a conditional edge to end the workflow
+        workflow.add_conditional_edges(
+            "llm_analyze",
+            self._handle_analysis_result,
+            {
+                True: END,
+                False: "analyze_file_listing"  # Loop back if analysis is not complete
+            }
+        )
+
+        return workflow.compile()
+
+    def execute_analysis(self, config: Dict[str, Any] = None) -> str:
+        try:
+            initial_state = State(
+                messages=[AIMessage(content="Please analyze the project.")],
+                project_root=config.get("project_root", ""),
+                context="",
+                analysis_result="",
+                error=None
+            )
+            logger.info(f"Initial state: {initial_state}")
+
+            # Set a higher recursion limit
+            config = config or {}
+            config['recursion_limit'] = 50  # Adjust this value as needed
+
+            for event in self.analyze_graph.stream(initial_state, config):
+                logger.info(f"Event received: {event}")
+                if "error" in event:
+                    logger.error(f"Error in event: {event['error']}")
+                    return f"An error occurred: {event['error']}"
+                elif "messages" in event:
+                    logger.debug(f"Received messages: {event['messages']}")
+                    for i, message in enumerate(event["messages"]):
+                        logger.debug(f"Message {i} type: {type(message)}")
+                        if not isinstance(message, BaseMessage):
+                            logger.warning(f"Message {i} is not a BaseMessage instance: {type(message)}")
+                            if isinstance(message, dict):
+                                content = message.get('content', str(message))
+                                role = message.get('role', 'AI')
+                                if role.lower() == 'human':
+                                    event["messages"][i] = HumanMessage(content=content)
+                                elif role.lower() == 'system':
+                                    event["messages"][i] = SystemMessage(content=content)
+                                else:
+                                    event["messages"][i] = AIMessage(content=content)
+                            else:
+                                event["messages"][i] = AIMessage(content=str(message))
+                    last_message = event["messages"][-1]
+                    logger.info(f"Last message type: {type(last_message)}")
+                    logger.info(f"Last message: {last_message.content}")
+                elif "analysis_result" in event:
+                    logger.info("Received analysis result")
+                    print("LLM Analysis of the Project:")
+                    print(event["analysis_result"])
+                    return "Analysis completed."
+
+            logger.warning("No analysis result was generated")
+            return "Analysis completed with no result."
+        except Exception as e:
+            logger.exception(f"An unexpected error occurred during analysis: {str(e)}")
+            return f"An unexpected error occurred during analysis: {str(e)}"
+
+    def _handle_analysis_result(self, state: State) -> bool:
+        # Check if we have an analysis result and it's not empty
+        if 'analysis_result' in state and state['analysis_result'].strip():
+            logger.info("Analysis result found. Ending the workflow.")
+            return True
+        elif state.get('error'):
+            logger.error(f"Error encountered: {state['error']}. Ending the workflow.")
+            return True
+        else:
+            logger.info("No analysis result yet. Continuing the workflow.")
+            return False
+
+    def _handle_task_execution_result(self, state: State) -> bool:
+        """
+        Determines whether the task execution is complete based on the current state.
+
+        Args:
+        state (State): The current state of the workflow.
+
+        Returns:
+        bool: True if the task is completed, False otherwise.
+        """
+        logger.debug(f"Handling task execution result. Current state: {state}")
+
+        # Check if there's an error in the state
+        if state.get("error"):
+            logger.error(f"Error encountered during task execution: {state['error']}")
+            return False
+
+        # Check if the task is marked as completed
+        if state.get("task_completed"):
+            logger.info("Task marked as completed.")
+            return True
+
+        # Check if we have a final result or output
+        if state.get("final_result") or state.get("output"):
+            logger.info("Final result or output found. Considering task as completed.")
+            return True
+
+        # Check if we've reached a maximum number of iterations
+        max_iterations = state.get("max_iterations", 5)  # Default to 5 if not set
+        current_iteration = state.get("current_iteration", 0)
+        if current_iteration >= max_iterations:
+            logger.warning(f"Reached maximum iterations ({max_iterations}). Ending task execution.")
+            return True
+
+        # If none of the above conditions are met, continue the task execution
+        logger.info("Task execution continuing.")
+        return False
 
     def execute(self, task_description: str, config: Dict[str, Any] = None) -> str:
         try:
             initial_state = State(
-                messages=[{"role": "user", "content": task_description}],
+                messages=[HumanMessage(content=task_description)],
                 project_root=config.get("project_root", ""),
                 claude_api=self.claude_api,
                 files={},
@@ -1002,10 +1302,24 @@ class LangGraphWorkflow:
                 if "error" in event:
                     return f"An error occurred: {event['error']}"
                 if "messages" in event:
-                    print(event["messages"][-1])
+                    for i, message in enumerate(event["messages"]):
+                        if not isinstance(message, BaseMessage):
+                            if isinstance(message, dict):
+                                content = message.get('content', str(message))
+                                role = message.get('role', 'AI')
+                                if role.lower() == 'human':
+                                    event["messages"][i] = HumanMessage(content=content)
+                                elif role.lower() == 'system':
+                                    event["messages"][i] = SystemMessage(content=content)
+                                else:
+                                    event["messages"][i] = AIMessage(content=content)
+                            else:
+                                event["messages"][i] = AIMessage(content=str(message))
+                    last_message = event["messages"][-1]
+                    print(f"AI: {last_message.content}")
             return "Task execution completed."
         except Exception as e:
-            logger.error(f"An unexpected error occurred: {str(e)}")
+            logger.exception(f"An unexpected error occurred: {str(e)}")
             return f"An unexpected error occurred: {str(e)}"
 
 
@@ -1020,14 +1334,13 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage
 
 class State(TypedDict):
-    messages: Annotated[List[BaseMessage], add_messages]
+    messages: Annotated[List[BaseMessage], add_messages]  # Ensure this line exists
     files: Dict[str, str]
     context: str
     interpreted_task: Dict[str, any]
     modifications: str
     test_results: str
     project_root: str
-    claude_api: any  # You might want to create a specific type for this
     autocoder_dir_exists: bool
 
 
@@ -1301,6 +1614,7 @@ pathspec==0.12.1
 ./src/autocoder/nodes/interpret_task.py
 ./src/autocoder/nodes/run_tests.py
 ./src/autocoder/nodes/task_execution_node.py
+./src/autocoder/nodes/analyze_file_listing_node.py
 ./src/autocoder/file_listing/__init__.py
 ./src/autocoder/file_listing/file_listing_node.py
 ./src/autocoder/__init__.py

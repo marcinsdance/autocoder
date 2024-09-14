@@ -12,6 +12,7 @@
 ./src/autocoder/nodes/interpret_task.py
 ./src/autocoder/nodes/run_tests.py
 ./src/autocoder/nodes/task_execution_node.py
+./src/autocoder/nodes/analyze_file_listing_node.py
 ./src/autocoder/file_listing/__init__.py
 ./src/autocoder/file_listing/file_listing_node.py
 ./src/autocoder/__init__.py
