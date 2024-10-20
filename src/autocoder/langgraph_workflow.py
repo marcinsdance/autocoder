@@ -10,6 +10,7 @@ from .claude_api_wrapper import ClaudeAPIWrapper
 from .nodes.task_execution_node import create_task_execution_node
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 from .file_listing.file_listing_node import FileListingNode
+from .file_manager import FileManager
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ class LangGraphWorkflow:
         self.claude_api = ClaudeAPIWrapper(api_key)
         self.graph = self._build_graph()
         self.memory = MemorySaver()
-        self.file_lister = FileListingNode(project_root="", claude_api=self.claude_api)
+        self.file_lister = FileListingNode(claude_api=self.claude_api)
 
     def _build_graph(self) -> StateGraph:
         workflow = StateGraph(State)
@@ -48,8 +49,10 @@ class LangGraphWorkflow:
             project_root = config.get("project_root", "")
             logger.info(f"Analyzing project in: {project_root}")
 
-            # Update the file_lister's project_root
-            self.file_lister.project_root = project_root
+            file_manager = FileManager(project_root)
+
+            # Get file listing and context
+            context = self.build_context(file_manager)
 
             # Create an initial state for the file listing process
             initial_state = {
@@ -104,6 +107,22 @@ Your analysis should be detailed and insightful, offering a clear understanding 
         except Exception as e:
             logger.exception(f"An unexpected error occurred during analysis: {str(e)}")
             return f"An unexpected error occurred during analysis: {str(e)}"
+
+
+    def build_context(self, file_manager: FileManager) -> str:
+        context = "Project Files:\n"
+        context += "\n".join(file_manager.list_files())
+        context += "\n\nFile Contents:\n"
+
+        for file_path in file_manager.list_files():
+            try:
+                content = file_manager.read_file(file_path)
+                context += f'\n\n#File {file_path}:\n{content}'
+            except Exception as e:
+                logger.warning(f"Could not read file {file_path}: {str(e)}")
+
+        return context
+
 
     def _handle_task_execution_result(self, state: State) -> bool:
         """

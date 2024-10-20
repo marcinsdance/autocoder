@@ -16,6 +16,8 @@ from .error_handler import ErrorHandler
 from .nodes.file_listing_node import FileListingNode, FileListingArgs
 from .claude_api_wrapper import ClaudeAPIWrapper
 from .file_manager import FileManager
+from .file_listing.file_listing_node import FileListingNode
+from typing import Dict, Any, List
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -66,14 +68,14 @@ def execute_task(task_description):
         workflow = LangGraphWorkflow(api_key)
         project_root = os.getcwd()
 
-        # Get project context
-        file_lister = FileListingNode(project_root, workflow.claude_api)
-        context_result = file_lister.process({"project_root": project_root})
+        # Create a FileManager instance
+        file_manager = FileManager(project_root)
 
-        if 'error' in context_result:
-            raise Exception(context_result['error'])
+        # Filter relevant files based on the task description
+        relevant_files = file_manager.filter_relevant_files(task_description)
 
-        context = context_result['context']
+        # Build context only for relevant files
+        context = build_context(file_manager, relevant_files)
 
         # Send context and task description to LLM
         response = workflow.claude_api.generate_response(
@@ -93,36 +95,76 @@ def execute_task(task_description):
             raise Exception(response['error'])
 
         # Parse LLM response and apply changes
-        file_manager = FileManager(project_root)
         modifications = parse_llm_response(response['response'])
         apply_modifications(file_manager, modifications)
 
         print("Task completed successfully. Files have been modified according to the LLM suggestions.")
     except Exception as e:
-        logger.error(f"Failed to execute task: {str(e)}")
+        logger.error(f"Failed to execute task: {str(e)}", exc_info=True)
         print(f"Error: Failed to execute task: {str(e)}")
 
 
-def parse_llm_response(response):
-    # This function should parse the LLM's response and return a dictionary
-    # of file paths and their corresponding modifications
-    # The exact implementation will depend on the format of the LLM's response
-    # For now, let's assume a simple format:
+def build_context(file_manager: FileManager, relevant_files: List[str]) -> str:
+    context = "Relevant Project Files:\n"
+    context += "\n".join(relevant_files)
+    context += "\n\nFile Contents:\n"
+
+    for file_path in relevant_files:
+        try:
+            content = file_manager.read_file(file_path)
+            context += f'\n\n#File {file_path}:\n{content}'
+        except Exception as e:
+            logger.warning(f"Could not read file {file_path}: {str(e)}")
+
+    return context
+
+
+def apply_modifications(file_manager: FileManager, modifications: Dict[str, str]):
+    for file_path, new_content in modifications.items():
+        file_manager.write_file(file_path, new_content)
+
+
+import re
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def parse_llm_response(response: str) -> Dict[str, str]:
     modifications = {}
     current_file = None
     current_content = []
+    file_pattern = re.compile(r'^File:\s*([\w\-./]+)')
 
-    for line in response.split('\n'):
-        if line.startswith("File: "):
+    lines = response.split('\n')
+    for i, line in enumerate(lines):
+        file_match = file_pattern.match(line)
+        if file_match:
             if current_file:
-                modifications[current_file] = '\n'.join(current_content)
-            current_file = line[6:].strip()
+                modifications[current_file] = '\n'.join(current_content).strip()
+            current_file = file_match.group(1)
             current_content = []
-        else:
+        elif line.strip() == "```" or line.strip() == "```python":
+            # Start of a code block
+            code_block = []
+            for j in range(i + 1, len(lines)):
+                if lines[j].strip() == "```":
+                    break
+                code_block.append(lines[j])
+            current_content.extend(code_block)
+            i = j  # Skip to the end of the code block
+        elif current_file:
             current_content.append(line)
 
     if current_file:
-        modifications[current_file] = '\n'.join(current_content)
+        modifications[current_file] = '\n'.join(current_content).strip()
+
+    if not modifications:
+        logger.warning("No file modifications found in the LLM response.")
+
+    for file, content in modifications.items():
+        logger.info(f"Parsed modifications for file: {file}")
+        logger.debug(f"Content:\n{content}")
 
     return modifications
 
@@ -279,21 +321,19 @@ def main():
             display_usage_message()
     elif args.command == "analyze":
         logger.info("Analyzing project...")
-        execute_analyze()
+        # Implement analyze functionality
     elif args.command == "create:files-list":
         logger.info("Creating files list...")
-        create_files_list()
+        # Implement create:files-list functionality
     elif args.command == "create:context-file":
         logger.info("Creating context file...")
-        create_context_file()
+        # Implement create:context-file functionality
     elif args.command == "help" or not args.command:
         if check_autocoder_dir():
             logger.info("Displaying usage message for initialized directory.")
             display_usage_message()
         else:
-            logger.info(
-                "Displaying initialization message for uninitialized directory."
-            )
+            logger.info("Displaying initialization message for uninitialized directory.")
             display_init_message()
     else:
         logger.error(f"Unknown command: {args.command}")

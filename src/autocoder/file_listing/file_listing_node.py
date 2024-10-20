@@ -1,76 +1,83 @@
-import os
 import logging
-from pathlib import Path
-import pathspec
-from typing import Dict, List, Any
+from typing import Dict, Any
+from ..file_manager import FileManager
+from langchain_core.tools import Tool
+from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel, Field
 from ..claude_api_wrapper import ClaudeAPIWrapper
 
 logger = logging.getLogger(__name__)
 
+
+class FileListingArgs(BaseModel):
+    project_root: str = Field(..., description="Root directory of the project")
+
+
 class FileListingNode:
-    def __init__(self, project_root: str, claude_api: ClaudeAPIWrapper):
-        self.project_root = Path(project_root)
+    def __init__(self, claude_api: ClaudeAPIWrapper):
         self.claude_api = claude_api
 
     def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         try:
-            self.project_root = Path(state['project_root'])
-            ignore_spec = self.get_ignore_spec()
-            project_files = self.list_project_files(ignore_spec)
-            context = self.build_context(project_files)
+            project_root = state.get('project_root')
+            if not project_root:
+                raise ValueError("Project root is not specified in the state")
+
+            file_manager = FileManager(project_root)
+
+            project_files = file_manager.list_files()
+            context = self.build_context(file_manager)
 
             return {
                 'project_files': project_files,
-                'excluded_files': [str(pat) for pat in ignore_spec.patterns],
                 'context': context
             }
         except Exception as e:
-            logger.error(f"Error in FileListingNode: {str(e)}")
+            logger.error(f"Error in FileListingNode: {str(e)}", exc_info=True)
             return {'error': str(e)}
 
-    def get_ignore_spec(self) -> pathspec.PathSpec:
-        patterns = []
-        gitignore_path = self.project_root / '.gitignore'
-        if gitignore_path.exists():
-            with gitignore_path.open('r') as f:
-                patterns.extend(f.read().splitlines())
-            logger.info("Read .gitignore and compiled ignore patterns.")
-        else:
-            logger.warning(".gitignore file not found.")
+    def build_context(self, file_manager: FileManager) -> str:
+        try:
+            context = "Project Files:\n"
+            context += "\n".join(file_manager.list_files())
+            context += "\n\nFile Contents:\n"
 
-        default_ignores = [
-            '.git/', '.hg/', '.svn/', '.idea/', '*.egg-info/',
-            '__pycache__/', '.DS_Store', '*.pyc', '.venv/',
-            'env/', 'build/', 'dist/', 'node_modules/',
-            '*.log', '*.tmp',
-        ]
-        patterns.extend(default_ignores)
-        return pathspec.PathSpec.from_lines('gitwildmatch', patterns)
+            for file_path in file_manager.list_files():
+                try:
+                    content = file_manager.read_file(file_path)
+                    context += f'\n\n#File {file_path}:\n{content}'
+                except Exception as e:
+                    logger.warning(f"Could not read file {file_path}: {str(e)}")
+                    context += f'\n\n#File {file_path}: [Error reading file: {str(e)}]'
 
-    def list_project_files(self, ignore_spec: pathspec.PathSpec) -> List[str]:
-        project_files = []
-        for root, dirs, files in os.walk(self.project_root):
-            root_path = Path(root)
-            rel_root = root_path.relative_to(self.project_root)
-            dirs[:] = [d for d in dirs if not ignore_spec.match_file(str(rel_root / d) + '/')]
-            for file in files:
-                rel_path = rel_root / file
-                if not ignore_spec.match_file(str(rel_path)):
-                    project_files.append(str(rel_path))
-        return project_files
+            return context
+        except Exception as e:
+            logger.error(f"Error building context: {str(e)}", exc_info=True)
+            return f"Error building context: {str(e)}"
 
-    def build_context(self, project_files: List[str]) -> str:
-        context = "Project Files:\n"
-        context += "\n".join(project_files)
-        context += "\n\nFile Contents:\n"
 
-        for file in project_files:
-            file_path = self.project_root / file
-            try:
-                with file_path.open('r', encoding='utf-8') as f:
-                    content = f.read()
-                context += f'\n\n#File {file}:\n{content}'
-            except Exception as e:
-                logger.warning(f"Could not read file {file}: {str(e)}")
+def file_listing(state: Dict[str, Any], args: FileListingArgs) -> Dict[str, Any]:
+    try:
+        claude_api = state.get('claude_api')
+        if not claude_api:
+            raise ValueError("Claude API is not specified in the state")
 
-        return context
+        file_lister = FileListingNode(claude_api)
+        result = file_lister.process(state)
+        state.update(result)
+        return state
+    except Exception as e:
+        logger.error(f"Error in file_listing: {str(e)}", exc_info=True)
+        return {'error': str(e)}
+
+
+file_listing_tools = [
+    Tool.from_function(
+        func=file_listing,
+        name="file_listing",
+        description="List project files and build context",
+        args_schema=FileListingArgs
+    )
+]
+
+file_listing_node = ToolNode(file_listing_tools)

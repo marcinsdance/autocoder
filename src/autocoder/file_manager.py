@@ -3,6 +3,8 @@ from typing import Dict, List
 from langchain_core.tools import Tool
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
+import re
+
 
 class ReadFileArgs(BaseModel):
     file_path: str = Field(..., description="Path to the file to read")
@@ -32,11 +34,47 @@ class FileManager:
                 file_list.append(os.path.relpath(os.path.join(root, file), self.project_root))
         return file_list
 
+    def filter_relevant_files(self, task_description: str, max_files: int = 10) -> List[str]:
+        all_files = self.list_files()
+        relevant_files = []
+
+        # Extract potential file names or patterns from the task description
+        potential_files = re.findall(r'\b[\w-]+\.[\w-]+\b', task_description)
+        potential_patterns = [f".*{pattern}.*" for pattern in potential_files]
+
+        # First, add files that directly match the task description
+        for file in all_files:
+            if any(pattern.lower() in file.lower() for pattern in potential_files):
+                relevant_files.append(file)
+                if len(relevant_files) >= max_files:
+                    return relevant_files
+
+        # Then, add files that match the extracted patterns
+        for file in all_files:
+            if any(re.match(pattern, file, re.IGNORECASE) for pattern in potential_patterns):
+                if file not in relevant_files:
+                    relevant_files.append(file)
+                    if len(relevant_files) >= max_files:
+                        return relevant_files
+
+        # If we still haven't reached max_files, add files based on common extensions
+        common_extensions = ['.py', '.js', '.html', '.css', '.md']
+        for ext in common_extensions:
+            for file in all_files:
+                if file.endswith(ext) and file not in relevant_files:
+                    relevant_files.append(file)
+                    if len(relevant_files) >= max_files:
+                        return relevant_files
+
+        return relevant_files
+
+
 def read_file(state: Dict, args: ReadFileArgs) -> Dict:
     project_root = state.get("project_root", "")
     file_manager = FileManager(project_root)
     content = file_manager.read_file(args.file_path)
     return {"content": content}
+
 
 def write_file(state: Dict, args: WriteFileArgs) -> Dict:
     project_root = state.get("project_root", "")
