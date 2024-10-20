@@ -15,10 +15,11 @@ class ClaudeAPIWrapper:
             messages = args.get('messages', [])
             max_tokens = args.get('max_tokens', 10000)
 
-            # Convert messages to the format expected by Anthropic API
             anthropic_messages = []
             for msg in messages:
-                if isinstance(msg, HumanMessage):
+                if isinstance(msg, dict):
+                    anthropic_messages.append(msg)
+                elif isinstance(msg, HumanMessage):
                     anthropic_messages.append({"role": "user", "content": msg.content})
                 elif isinstance(msg, AIMessage):
                     anthropic_messages.append({"role": "assistant", "content": msg.content})

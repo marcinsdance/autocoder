@@ -15,6 +15,7 @@ from .nodes.tools.directory_checker import (
 from .error_handler import ErrorHandler
 from .nodes.file_listing_node import FileListingNode, FileListingArgs
 from .claude_api_wrapper import ClaudeAPIWrapper
+from .file_manager import FileManager
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -46,6 +47,7 @@ def stream_execution(workflow: LangGraphWorkflow, task_description: str, config:
         ErrorHandler.log_error(e)
         yield f"An unexpected error occurred: {error_report['error_message']}"
 
+
 def execute_task(task_description):
     if not check_autocoder_dir():
         logger.error("Autocoder is not initialized in this directory.")
@@ -56,17 +58,78 @@ def execute_task(task_description):
     api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
     if not api_key:
         logger.error("No API key found. Cannot proceed with task execution.")
-        print("Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file.")
+        print(
+            "Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file.")
         return
 
     try:
         workflow = LangGraphWorkflow(api_key)
-        print("Executing task. Streaming output:")
-        for output in stream_execution(workflow, task_description, {"project_root": os.getcwd()}):
-            print(output)
+        project_root = os.getcwd()
+
+        # Get project context
+        file_lister = FileListingNode(project_root, workflow.claude_api)
+        context_result = file_lister.process({"project_root": project_root})
+
+        if 'error' in context_result:
+            raise Exception(context_result['error'])
+
+        context = context_result['context']
+
+        # Send context and task description to LLM
+        response = workflow.claude_api.generate_response(
+            state={},
+            args={
+                "messages": [
+                    {"role": "system",
+                     "content": "You are an AI assistant tasked with modifying code based on the given context and task description. Provide specific file modifications with clear instructions."},
+                    {"role": "user",
+                     "content": f"Context:\n{context}\n\nTask Description: {task_description}\n\nPlease provide specific file modifications to complete this task. Format your response as a list of file paths and their corresponding changes."}
+                ],
+                "max_tokens": 2000
+            }
+        )
+
+        if 'error' in response:
+            raise Exception(response['error'])
+
+        # Parse LLM response and apply changes
+        file_manager = FileManager(project_root)
+        modifications = parse_llm_response(response['response'])
+        apply_modifications(file_manager, modifications)
+
+        print("Task completed successfully. Files have been modified according to the LLM suggestions.")
     except Exception as e:
         logger.error(f"Failed to execute task: {str(e)}")
         print(f"Error: Failed to execute task: {str(e)}")
+
+
+def parse_llm_response(response):
+    # This function should parse the LLM's response and return a dictionary
+    # of file paths and their corresponding modifications
+    # The exact implementation will depend on the format of the LLM's response
+    # For now, let's assume a simple format:
+    modifications = {}
+    current_file = None
+    current_content = []
+
+    for line in response.split('\n'):
+        if line.startswith("File: "):
+            if current_file:
+                modifications[current_file] = '\n'.join(current_content)
+            current_file = line[6:].strip()
+            current_content = []
+        else:
+            current_content.append(line)
+
+    if current_file:
+        modifications[current_file] = '\n'.join(current_content)
+
+    return modifications
+
+
+def apply_modifications(file_manager, modifications):
+    for file_path, new_content in modifications.items():
+        file_manager.write_file(file_path, new_content)
 
 def execute_analyze():
     if not check_autocoder_dir():
