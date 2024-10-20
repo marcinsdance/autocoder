@@ -106,7 +106,6 @@ def create_files_list():
         autocoder_dir = os.path.join(project_root, ".autocoder")
         files_list_path = os.path.join(autocoder_dir, "files")
 
-        # Use the existing FileListingNode to get the file list
         api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
         claude_api = ClaudeAPIWrapper(api_key)
         file_lister = FileListingNode(project_root, claude_api)
@@ -128,13 +127,45 @@ def create_files_list():
         logger.error(f"Failed to create files list: {str(e)}")
         print(f"Error: Failed to create files list: {str(e)}")
 
+def create_context_file():
+    if not check_autocoder_dir():
+        logger.error("Autocoder is not initialized in this directory.")
+        print("Autocoder is not initialized in this directory. Please run 'autocoder init' first.")
+        return
+
+    try:
+        project_root = os.getcwd()
+        autocoder_dir = os.path.join(project_root, ".autocoder")
+        context_file_path = os.path.join(autocoder_dir, "context")
+
+        api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
+        claude_api = ClaudeAPIWrapper(api_key)
+        file_lister = FileListingNode(project_root, claude_api)
+
+        state = {"project_root": project_root, "claude_api": claude_api}
+        result = file_lister.process(state)
+
+        if 'error' in result:
+            raise Exception(result['error'])
+
+        context = result['context']
+
+        with open(context_file_path, 'w') as f:
+            f.write(context)
+
+        logger.info(f"Context file created successfully at {context_file_path}")
+        print(f"Context file created successfully at {context_file_path}")
+    except Exception as e:
+        logger.error(f"Failed to create context file: {str(e)}")
+        print(f"Error: Failed to create context file: {str(e)}")
+
 def main():
     parser = argparse.ArgumentParser(description="Claude Automated Coding")
     parser.add_argument(
         "command",
         nargs="?",
         default="help",
-        choices=["init", "task", "analyze", "create:files-list", "help"],
+        choices=["init", "task", "analyze", "create:files-list", "create:context-file", "help"],
         help="Command to execute",
     )
     parser.add_argument(
@@ -165,6 +196,9 @@ def main():
     elif args.command == "create:files-list":
         logger.info("Creating files list...")
         create_files_list()
+    elif args.command == "create:context-file":
+        logger.info("Creating context file...")
+        create_context_file()
     elif args.command == "help" or not args.command:
         if check_autocoder_dir():
             logger.info("Displaying usage message for initialized directory.")

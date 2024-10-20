@@ -29,11 +29,12 @@ def display_usage_message():
 Usage: autocoder [command]
 The available commands for execution are listed below.
 Commands:
-  init               Init autocoder in this directory
-  task               Execute a task in an initialized directory
-  analyze            Analyze the project in an initialized directory
-  create:files-list  Create a list of all project files (respects .gitignore)
-  help               Display help information
+  init                 Init autocoder in this directory
+  task                 Execute a task in an initialized directory
+  analyze              Analyze the project in an initialized directory
+  create:files-list    Create a list of all project files (respects .gitignore)
+  create:context-file  Create a context file with the content of all project files
+  help                 Display help information
 """
     print(message)
 
