@@ -20,7 +20,7 @@ def execute_task(state: Dict, args: TaskExecutionArgs, claude_api) -> Dict:
         response = claude_api.completions.create(
             model="claude-instant-v1",
             prompt=prompt,
-            max_tokens_to_sample=1000,
+            max_tokens_to_sample=10000,
             stop_sequences=[HUMAN_PROMPT]
         )
 

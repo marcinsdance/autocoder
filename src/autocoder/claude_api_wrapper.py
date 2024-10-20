@@ -13,7 +13,7 @@ class ClaudeAPIWrapper:
     def generate_response(self, state: Dict[str, Any], args: Dict[str, Any]) -> Dict[str, Any]:
         try:
             messages = args.get('messages', [])
-            max_tokens = args.get('max_tokens', 1000)
+            max_tokens = args.get('max_tokens', 10000)
 
             # Convert messages to the format expected by Anthropic API
             anthropic_messages = []

@@ -64,12 +64,12 @@ class FileListingNode:
         context += "\n".join(project_files)
         context += "\n\nFile Contents:\n"
 
-        for file in project_files[:10]:  # Limit to first 10 files to avoid overwhelming the LLM
+        for file in project_files:
             file_path = self.project_root / file
             try:
                 with file_path.open('r', encoding='utf-8') as f:
                     content = f.read()
-                context += f'\n\n#File {file}:\n{content[:1000]}'  # Limit each file to first 1000 characters
+                context += f'\n\n#File {file}:\n{content}'
             except Exception as e:
                 logger.warning(f"Could not read file {file}: {str(e)}")
 
