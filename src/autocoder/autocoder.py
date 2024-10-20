@@ -104,7 +104,7 @@ def create_files_list():
     try:
         project_root = os.getcwd()
         autocoder_dir = os.path.join(project_root, ".autocoder")
-        files_list_path = os.path.join(autocoder_dir, "files")
+        files_list_path = os.path.join(autocoder_dir, "files.txt")
 
         load_dotenv()
         api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
@@ -115,10 +115,9 @@ def create_files_list():
             return
 
         claude_api = ClaudeAPIWrapper(api_key)
-        file_lister = FileListingNode(project_root, claude_api)
+        file_lister = FileListingNode(claude_api)
 
-        state = {"project_root": project_root, "claude_api": claude_api}
-        result = file_lister.process(state)
+        result = file_lister.process(project_root)
 
         if 'error' in result:
             raise Exception(result['error'])
@@ -144,7 +143,7 @@ def create_context_file():
     try:
         project_root = os.getcwd()
         autocoder_dir = os.path.join(project_root, ".autocoder")
-        context_file_path = os.path.join(autocoder_dir, "context")
+        context_file_path = os.path.join(autocoder_dir, "context.txt")
 
         # Use the existing FileListingNode to get the context
         load_dotenv()
