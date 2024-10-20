@@ -13,7 +13,7 @@ from .nodes.tools.directory_checker import (
     display_usage_message,
 )
 from .error_handler import ErrorHandler
-from .file_listing.file_listing_node import FileListingNode
+from .nodes.file_listing_node import FileListingNode, FileListingArgs
 from .claude_api_wrapper import ClaudeAPIWrapper
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -106,7 +106,14 @@ def create_files_list():
         autocoder_dir = os.path.join(project_root, ".autocoder")
         files_list_path = os.path.join(autocoder_dir, "files")
 
+        load_dotenv()
         api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
+        if not api_key:
+            logger.error("No API key found. Cannot proceed with task execution.")
+            print(
+                "Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file.")
+            return
+
         claude_api = ClaudeAPIWrapper(api_key)
         file_lister = FileListingNode(project_root, claude_api)
 
@@ -127,6 +134,7 @@ def create_files_list():
         logger.error(f"Failed to create files list: {str(e)}")
         print(f"Error: Failed to create files list: {str(e)}")
 
+
 def create_context_file():
     if not check_autocoder_dir():
         logger.error("Autocoder is not initialized in this directory.")
@@ -138,25 +146,42 @@ def create_context_file():
         autocoder_dir = os.path.join(project_root, ".autocoder")
         context_file_path = os.path.join(autocoder_dir, "context")
 
+        # Use the existing FileListingNode to get the context
+        load_dotenv()
         api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
-        claude_api = ClaudeAPIWrapper(api_key)
-        file_lister = FileListingNode(project_root, claude_api)
+        if not api_key:
+            logger.error("No API key found. Cannot proceed with task execution.")
+            print(
+                "Error: No API key found. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or .env file.")
+            return
 
-        state = {"project_root": project_root, "claude_api": claude_api}
-        result = file_lister.process(state)
+
+        claude_api = ClaudeAPIWrapper(api_key)
+        file_lister = FileListingNode(claude_api)
+        result = file_lister.process(project_root)
 
         if 'error' in result:
             raise Exception(result['error'])
 
         context = result['context']
 
+        # Write the context to file in chunks to handle potentially large files
         with open(context_file_path, 'w') as f:
-            f.write(context)
+            for i in range(0, len(context), 1024 * 1024):  # Write in 1MB chunks
+                f.write(context[i:i + 1024 * 1024])
 
         logger.info(f"Context file created successfully at {context_file_path}")
         print(f"Context file created successfully at {context_file_path}")
+        print(f"Total files processed: {len(result['project_files'])}")
+        print(f"Context size: {len(context)} bytes")
+        print("Files included in context:")
+        for file in result['project_files']:
+            print(f"  - {file}")
+        print("\nExcluded patterns:")
+        for pattern in result['excluded_files']:
+            print(f"  - {pattern}")
     except Exception as e:
-        logger.error(f"Failed to create context file: {str(e)}")
+        logger.error(f"Failed to create context file: {str(e)}", exc_info=True)
         print(f"Error: Failed to create context file: {str(e)}")
 
 def main():
