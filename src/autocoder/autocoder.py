@@ -3,6 +3,7 @@ import logging
 import os
 from dotenv import load_dotenv
 from typing import Dict, Any
+from pathlib import Path
 
 from .langgraph_workflow import LangGraphWorkflow
 from .nodes.tools.directory_checker import (
@@ -12,6 +13,8 @@ from .nodes.tools.directory_checker import (
     display_usage_message,
 )
 from .error_handler import ErrorHandler
+from .file_listing.file_listing_node import FileListingNode
+from .claude_api_wrapper import ClaudeAPIWrapper
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -92,13 +95,46 @@ def execute_analyze():
         logger.error(f"Failed to execute analysis: {str(e)}")
         print(f"Error: Failed to execute analysis: {str(e)}")
 
+def create_files_list():
+    if not check_autocoder_dir():
+        logger.error("Autocoder is not initialized in this directory.")
+        print("Autocoder is not initialized in this directory. Please run 'autocoder init' first.")
+        return
+
+    try:
+        project_root = os.getcwd()
+        autocoder_dir = os.path.join(project_root, ".autocoder")
+        files_list_path = os.path.join(autocoder_dir, "files")
+
+        # Use the existing FileListingNode to get the file list
+        api_key = os.getenv('ANTHROPIC_API_KEY') or os.getenv('CLAUDE_API_KEY')
+        claude_api = ClaudeAPIWrapper(api_key)
+        file_lister = FileListingNode(project_root, claude_api)
+
+        state = {"project_root": project_root, "claude_api": claude_api}
+        result = file_lister.process(state)
+
+        if 'error' in result:
+            raise Exception(result['error'])
+
+        project_files = result['project_files']
+
+        with open(files_list_path, 'w') as f:
+            f.write("\n".join(project_files))
+
+        logger.info(f"Files list created successfully at {files_list_path}")
+        print(f"Files list created successfully at {files_list_path}")
+    except Exception as e:
+        logger.error(f"Failed to create files list: {str(e)}")
+        print(f"Error: Failed to create files list: {str(e)}")
+
 def main():
     parser = argparse.ArgumentParser(description="Claude Automated Coding")
     parser.add_argument(
         "command",
         nargs="?",
         default="help",
-        choices=["init", "task", "analyze", "help"],
+        choices=["init", "task", "analyze", "create:files-list", "help"],
         help="Command to execute",
     )
     parser.add_argument(
@@ -126,6 +162,9 @@ def main():
     elif args.command == "analyze":
         logger.info("Analyzing project...")
         execute_analyze()
+    elif args.command == "create:files-list":
+        logger.info("Creating files list...")
+        create_files_list()
     elif args.command == "help" or not args.command:
         if check_autocoder_dir():
             logger.info("Displaying usage message for initialized directory.")
