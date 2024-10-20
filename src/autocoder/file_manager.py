@@ -47,24 +47,33 @@ class FileManager:
             if any(pattern.lower() in file.lower() for pattern in potential_files):
                 relevant_files.append(file)
                 if len(relevant_files) >= max_files:
-                    return relevant_files
+                    break
 
         # Then, add files that match the extracted patterns
-        for file in all_files:
-            if any(re.match(pattern, file, re.IGNORECASE) for pattern in potential_patterns):
-                if file not in relevant_files:
-                    relevant_files.append(file)
-                    if len(relevant_files) >= max_files:
-                        return relevant_files
+        if len(relevant_files) < max_files:
+            for file in all_files:
+                if any(re.match(pattern, file, re.IGNORECASE) for pattern in potential_patterns):
+                    if file not in relevant_files:
+                        relevant_files.append(file)
+                        if len(relevant_files) >= max_files:
+                            break
 
         # If we still haven't reached max_files, add files based on common extensions
-        common_extensions = ['.py', '.js', '.html', '.css', '.md']
-        for ext in common_extensions:
-            for file in all_files:
-                if file.endswith(ext) and file not in relevant_files:
-                    relevant_files.append(file)
-                    if len(relevant_files) >= max_files:
-                        return relevant_files
+        if len(relevant_files) < max_files:
+            common_extensions = ['.py', '.js', '.html', '.css', '.md']
+            for ext in common_extensions:
+                for file in all_files:
+                    if file.endswith(ext) and file not in relevant_files:
+                        relevant_files.append(file)
+                        if len(relevant_files) >= max_files:
+                            break
+                if len(relevant_files) >= max_files:
+                    break
+
+        # Print the list of filtered files
+        print("Filtered relevant files:")
+        for file in relevant_files:
+            print(f"  - {file}")
 
         return relevant_files
 
